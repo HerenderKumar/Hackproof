@@ -244,7 +244,7 @@ async def test_the_replay_mode_client_needs_no_key(tmp_path: Path) -> None:
     client = make_llm_client(
         Settings(llm_mode="replay", llm_api_key=None, llm_replay_dir=tmp_path), None
     )
-    with pytest.raises(ReplayMissing):
+    with pytest.raises(ReplayMissing, match=r"^draft: no recorded reply"):
         await client.submit(purpose="draft", model="m", system="s", user="u", tool=TOOL,
                             max_tokens=10)  # fmt: skip
 

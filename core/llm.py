@@ -186,6 +186,8 @@ class LLMClient:
             value = _parse(reply, tool)
             ok = True
             return value
+        except ReplayMissing as exc:
+            raise ReplayMissing(f"{purpose}: {exc}") from None
         finally:
             duration_ms = int((time.monotonic() - started) * 1000)
             input_tokens = _int(usage.get("prompt_tokens"))

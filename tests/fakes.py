@@ -1,7 +1,8 @@
 """Fakes for everything external (section 3.3). Unit tests never touch Docker or the network."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
+from core.repo import ProviderName, RepoInfo, RepoNotFound
 from worker.runtime import Labelled
 
 
@@ -60,3 +61,38 @@ class FakeRuntime:
             raise RuntimeError(f"{item_id} is in use")
         del items[item_id]
         self.removed.append(item_id)
+
+
+class FakeRepoProvider:
+    """A RepoProvider over a dictionary: `{url: RepoInfo or the error to raise}`."""
+
+    name: ProviderName = "github"
+
+    def __init__(self) -> None:
+        self.repos: dict[str, RepoInfo | Exception] = {}
+        self.calls: list[str] = []
+
+    def add(self, url: str, /, **overrides: object) -> RepoInfo:
+        values: dict[str, object] = {
+            "provider": self.name,
+            "id": str(1000 + len(self.repos)),
+            "url": url,
+            "default_branch": "main",
+            "created_at": datetime(2026, 11, 1, tzinfo=UTC),
+            "is_public": True,
+        }
+        info = RepoInfo(**{**values, **overrides})  # type: ignore[arg-type]
+        self.repos[url] = info
+        return info
+
+    def fail(self, url: str, error: Exception) -> None:
+        self.repos[url] = error
+
+    async def describe(self, repo_url: str) -> RepoInfo:
+        self.calls.append(repo_url)
+        found = self.repos.get(repo_url.strip())
+        if found is None:
+            raise RepoNotFound(repo_url)
+        if isinstance(found, Exception):
+            raise found
+        return found

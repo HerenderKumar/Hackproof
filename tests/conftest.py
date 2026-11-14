@@ -3,6 +3,8 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator
+from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from alembic import command
@@ -16,6 +18,10 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+
+from tests.api_helpers import Api, make_app
+from tests.factories import T0
+from tests.fakes import FakeClock, FakeRepoProvider
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://hp:hp@127.0.0.1:54329/hp_test"
@@ -71,3 +77,35 @@ async def sessions(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
         if names:
             await conn.execute(text(f"TRUNCATE {names} RESTART IDENTITY CASCADE"))
     return async_sessionmaker(engine, expire_on_commit=False)
+
+
+# --- the API, with its clock and repository provider under the test's control ---------------
+
+
+@pytest.fixture
+def clock() -> FakeClock:
+    """Six hours before the kickoff of the events the tests create.
+
+    Close enough that a session started now (12 hours) is still alive just after kickoff.
+    """
+    return FakeClock(T0 - timedelta(hours=6))
+
+
+@pytest.fixture
+def repos() -> FakeRepoProvider:
+    return FakeRepoProvider()
+
+
+@pytest.fixture
+async def api(
+    sessions: async_sessionmaker[AsyncSession],
+    migrated_database_url: str,
+    tmp_path: Path,
+    clock: FakeClock,
+    repos: FakeRepoProvider,
+) -> AsyncIterator[Api]:
+    app = make_app(migrated_database_url, tmp_path, clock, repos)
+    helper = Api(app)
+    yield helper
+    await helper.aclose()
+    await app.state.engine.dispose()

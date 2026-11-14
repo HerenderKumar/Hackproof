@@ -467,3 +467,68 @@ def assert_dies(pid: int) -> None:
             return
         time.sleep(0.1)
     pytest.fail(f"process {pid} outlived the deadline")
+
+
+# --- fresh timestamps (BuildKit's context sync trusts path, size and time, not content) ----------
+
+# 2026-11-01 10:00 UTC in ns: a git archive's commit time. It must lie in the past, or a stamp
+# taken from the real clock could not be later than it.
+OLD = 1_793_527_200_000_000_000
+
+
+def stamps(root: Path) -> set[int]:
+    found = {root.stat().st_mtime_ns}
+    for path in root.rglob("*"):
+        found.add(path.lstat().st_mtime_ns)
+    return found
+
+
+def age(root: Path) -> None:
+    for path in [root, *root.rglob("*")]:
+        os.utime(path, ns=(OLD, OLD), follow_symlinks=False)
+
+
+async def test_every_file_gets_one_fresh_timestamp_before_the_build(
+    src: Path, scratch: Path, log_path: Path
+) -> None:
+    (src / "lib").mkdir()
+    (src / "lib" / "util.js").write_text("module.exports = 1\n")
+    (src / "link.js").symlink_to("lib/util.js")
+    age(src)
+
+    await build(src, scratch, log_path, railpack_ok())
+
+    (stamp,) = stamps(src)
+    assert stamp > OLD
+
+
+async def test_links_are_stamped_themselves_and_never_followed(
+    src: Path, scratch: Path, log_path: Path
+) -> None:
+    outside = src.parent / "outside"
+    outside.mkdir()
+    (outside / "notes.txt").write_text("not part of the snapshot\n")
+    (src / "escape").symlink_to(outside, target_is_directory=True)
+    age(src)
+    age(outside)
+
+    await build(src, scratch, log_path, railpack_ok())
+
+    assert (src / "escape").lstat().st_mtime_ns > OLD
+    assert stamps(outside) == {OLD}
+
+
+async def test_two_builds_never_share_a_timestamp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("worker.build.time.time_ns", lambda: OLD)  # a clock that stands still
+    seen = []
+    for name in ("a", "b"):
+        src = tmp_path / name / "src"
+        src.mkdir(parents=True)
+        (src / "main.py").write_text("x = 1\n")
+        age(src)  # both start from the same commit time
+        await build(src, tmp_path / name / "build", tmp_path / name / "build.log", railpack_ok())
+        seen.append(stamps(src).pop())
+
+    assert seen[0] != seen[1]

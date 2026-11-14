@@ -155,6 +155,7 @@ async def build_image(
     deadline = time.monotonic() + timeout_s
     tag = image_tag(team_id, attempt_id)
     log = CappedLog()
+    await asyncio.to_thread(_stamp_tree, src, _fresh_stamp())
     method = await asyncio.to_thread(build_method, src)
     try:
         if method == "dockerfile":
@@ -188,6 +189,31 @@ async def build_image(
 
 
 # --- helpers -------------------------------------------------------------------------------------
+
+# BuildKit keeps the last context it was sent and, on the next build, resends only the files
+# whose path, size, mode or modification time changed; it never compares content. A git
+# archive stamps every file with its commit time, so two snapshots made at the same commit time
+# (a fixture's good and broken variants, or a team's two pushes within one second) can hold a
+# file that differs only in content, and the second build would silently reuse the first one's
+# copy. Each build therefore gives every path one timestamp that no earlier build used.
+_last_stamp = 0
+
+
+def _fresh_stamp() -> int:
+    """Now, in nanoseconds, and always later than the last stamp this process handed out."""
+    global _last_stamp
+    _last_stamp = max(time.time_ns(), _last_stamp + 1)
+    return _last_stamp
+
+
+def _stamp_tree(root: Path, stamp: int) -> None:
+    """Set the access and modification time of `root` and everything under it to `stamp`.
+    Symbolic links are stamped themselves, never followed: a team's link may point anywhere."""
+    for directory, dirnames, filenames in os.walk(root):  # does not descend into linked dirs
+        os.utime(directory, ns=(stamp, stamp), follow_symlinks=False)
+        linked_dirs = [d for d in dirnames if os.path.islink(os.path.join(directory, d))]
+        for name in (*filenames, *linked_dirs):
+            os.utime(os.path.join(directory, name), ns=(stamp, stamp), follow_symlinks=False)
 
 
 async def _railpack(

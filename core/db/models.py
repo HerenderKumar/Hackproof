@@ -1,0 +1,313 @@
+"""SQLAlchemy models for the tables of section 10.
+
+The migrations own the DDL (D-028): constraints, defaults and the immutability trigger are
+defined there. These classes only describe columns, and `tests/unit/test_schema.py` checks
+that they match the migrated database.
+"""
+
+import uuid
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Text, text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, mapped_column
+
+
+class Base(DeclarativeBase):
+    type_annotation_map = {str: Text, datetime: DateTime(timezone=True)}
+
+
+def _uuid_pk() -> MappedColumn[uuid.UUID]:
+    return mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))
+
+
+def _now() -> MappedColumn[datetime]:
+    return mapped_column(server_default=text("now()"))
+
+
+def _json(default: str | None = None) -> MappedColumn[Any]:
+    """A NOT NULL JSONB column, optionally with a database default."""
+    return mapped_column(
+        JSONB, nullable=False, server_default=text(f"'{default}'") if default else None
+    )
+
+
+def _json_or_null() -> MappedColumn[Any]:
+    # Python None is stored as SQL NULL, not as the JSON value `null`.
+    return mapped_column(JSONB(none_as_null=True), nullable=True)
+
+
+class Event(Base):
+    __tablename__ = "events"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    name: Mapped[str]
+    kickoff_at: Mapped[datetime]
+    deadline_at: Mapped[datetime]
+    rubric_version: Mapped[int] = mapped_column(server_default=text("1"))
+    rubric: Mapped[Any] = _json()
+    policy_text: Mapped[str] = mapped_column(server_default=text("''"))
+    bulk_push_lines: Mapped[int] = mapped_column(server_default=text("2000"))
+    bulk_push_window_minutes: Mapped[int] = mapped_column(server_default=text("60"))
+    poll_interval_seconds: Mapped[int] = mapped_column(server_default=text("300"))
+    scores_locked: Mapped[bool] = mapped_column(server_default=text("false"))
+    created_at: Mapped[datetime] = _now()
+
+
+class Team(Base):
+    __tablename__ = "teams"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id"))
+    name: Mapped[str]
+    contact_email: Mapped[str | None]
+    repo_url: Mapped[str | None]
+    repo_provider: Mapped[str | None]
+    repository_id: Mapped[str | None]
+    default_branch: Mapped[str | None]
+    repo_created_at: Mapped[datetime | None]
+    registered_at: Mapped[datetime | None]
+    rules_acknowledged_at: Mapped[datetime | None]
+    health_path: Mapped[str] = mapped_column(server_default=text("'/'"))
+
+
+class Judge(Base):
+    __tablename__ = "judges"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id"))
+    name: Mapped[str]
+    email: Mapped[str | None]
+
+
+class AccessLink(Base):
+    __tablename__ = "access_links"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id"))
+    role: Mapped[str]
+    subject_id: Mapped[uuid.UUID]
+    token_hash: Mapped[str]
+    expires_at: Mapped[datetime]
+    revoked_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = _now()
+
+
+class RepoObservation(Base):
+    __tablename__ = "repo_observations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    kind: Mapped[str]
+    observed_at: Mapped[datetime]
+    head_sha: Mapped[str | None]
+    previous_head_sha: Mapped[str | None]
+    descends_from_previous: Mapped[bool | None]
+    lines_added: Mapped[int | None]
+    lines_total: Mapped[int | None]
+    files_changed: Mapped[int | None]
+    commits: Mapped[Any] = _json(default="[]")
+
+
+class Claims(Base):
+    __tablename__ = "claims"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    version: Mapped[int]
+    items: Mapped[Any] = _json()
+    claims_hash: Mapped[str]
+    created_at: Mapped[datetime] = _now()
+
+
+class Snapshot(Base):
+    __tablename__ = "snapshots"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    commit_sha: Mapped[str]
+    archive_sha256: Mapped[str]
+    archive_path: Mapped[str]
+    commit_history: Mapped[Any] = _json()
+    lines_total: Mapped[int | None]
+    created_at: Mapped[datetime] = _now()
+
+
+class TestSpec(Base):
+    __tablename__ = "test_specs"
+    __test__ = False  # not a pytest class, despite the name
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("snapshots.id"))
+    claims_version: Mapped[int]
+    version: Mapped[int]
+    kind: Mapped[str]
+    claim_id: Mapped[str | None]
+    claim_type: Mapped[str]
+    steps: Mapped[Any] = _json()
+    practice_cases: Mapped[Any] = _json(default="[]")
+    final_cases: Mapped[Any] = _json(default="[]")
+    spec_hash: Mapped[str]
+    status: Mapped[str]
+    clarification_reason: Mapped[str | None]
+    approved_at: Mapped[datetime | None]
+    approved_spec_hash: Mapped[str | None]
+    created_at: Mapped[datetime] = _now()
+
+
+class Submission(Base):
+    """Immutable once written: a trigger blocks UPDATE and DELETE (invariant 3)."""
+
+    __tablename__ = "submissions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    snapshot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("snapshots.id"))
+    mode: Mapped[str]
+    deploy_url: Mapped[str | None]
+    claims_version: Mapped[int]
+    claims_hash: Mapped[str]
+    test_spec_hash: Mapped[str]
+    rubric_version: Mapped[int]
+    runner_version: Mapped[str]
+    railpack_version: Mapped[str]
+    reuse_declaration: Mapped[Any] = _json()
+    submitted_at: Mapped[datetime] = _now()
+    idempotency_key: Mapped[str]
+    receipt_hash: Mapped[str]
+
+
+class Job(Base):
+    __tablename__ = "jobs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    kind: Mapped[str]
+    lane: Mapped[str]
+    priority: Mapped[int]
+    status: Mapped[str] = mapped_column(server_default=text("'queued'"))
+    team_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("teams.id"))
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("snapshots.id"))
+    submission_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("submissions.id"))
+    depends_on: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id"))
+    payload: Mapped[Any] = _json(default="{}")
+    idempotency_key: Mapped[str]
+    attempt_id: Mapped[uuid.UUID | None]
+    attempts: Mapped[int] = mapped_column(server_default=text("0"))
+    max_attempts: Mapped[int] = mapped_column(server_default=text("3"))
+    lease_until: Mapped[datetime | None]
+    run_after: Mapped[datetime] = _now()
+    error_class: Mapped[str | None]
+    error_detail: Mapped[str | None]
+    created_at: Mapped[datetime] = _now()
+    finished_at: Mapped[datetime | None]
+
+
+class RunResult(Base):
+    __tablename__ = "run_results"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"))
+    attempt_id: Mapped[uuid.UUID]
+    build_status: Mapped[str]
+    build_exit_code: Mapped[int | None]
+    build_method: Mapped[str | None]
+    startup_status: Mapped[str]
+    startup_detail: Mapped[str | None]
+    image_digest: Mapped[str | None]
+    build_config: Mapped[Any] = _json_or_null()
+    flags_used: Mapped[Any] = _json(default="{}")
+    build_log_path: Mapped[str | None]
+    app_log_path: Mapped[str | None]
+    started_at: Mapped[datetime]
+    finished_at: Mapped[datetime | None]
+
+
+class TestResult(Base):
+    __tablename__ = "test_results"
+    __test__ = False  # not a pytest class, despite the name
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"))
+    attempt_id: Mapped[uuid.UUID]
+    spec_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("test_specs.id"))
+    case_id: Mapped[str | None]
+    verdict: Mapped[str]
+    expected: Mapped[Any] = _json_or_null()
+    actual: Mapped[Any] = _json_or_null()
+    assertion_results: Mapped[Any] = _json_or_null()
+    duration_ms: Mapped[int | None]
+    video_path: Mapped[str | None]
+    trace_path: Mapped[str | None]
+    error: Mapped[str | None]
+
+
+class Audit(Base):
+    __tablename__ = "audits"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"))
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"))
+    attempt_id: Mapped[uuid.UUID]
+    content: Mapped[Any] = _json()
+    citations_dropped: Mapped[int] = mapped_column(server_default=text("0"))
+    partial: Mapped[bool] = mapped_column(server_default=text("false"))
+    code_map: Mapped[Any] = _json_or_null()
+    code_map_status: Mapped[str | None]
+    created_at: Mapped[datetime] = _now()
+
+
+class Brief(Base):
+    __tablename__ = "briefs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"))
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"))
+    attempt_id: Mapped[uuid.UUID]
+    content: Mapped[Any] = _json()
+    ai_status: Mapped[str]
+    model: Mapped[str | None]
+    created_at: Mapped[datetime] = _now()
+
+
+class ClaimMark(Base):
+    __tablename__ = "claim_marks"
+
+    judge_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("judges.id"), primary_key=True)
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"), primary_key=True)
+    claim_id: Mapped[str] = mapped_column(primary_key=True)
+    mark: Mapped[str]
+    updated_at: Mapped[datetime] = _now()
+
+
+class Score(Base):
+    __tablename__ = "scores"
+
+    judge_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("judges.id"), primary_key=True)
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"), primary_key=True)
+    criterion_id: Mapped[str] = mapped_column(primary_key=True)
+    value: Mapped[int]
+    updated_at: Mapped[datetime] = _now()
+
+
+class BriefView(Base):
+    __tablename__ = "brief_views"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    judge_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("judges.id"))
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"))
+    opened_at: Mapped[datetime] = _now()
+
+
+class LlmCall(Base):
+    __tablename__ = "llm_calls"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id"))
+    purpose: Mapped[str]
+    model: Mapped[str]
+    input_tokens: Mapped[int | None]
+    output_tokens: Mapped[int | None]
+    duration_ms: Mapped[int | None]
+    ok: Mapped[bool]
+    created_at: Mapped[datetime] = _now()

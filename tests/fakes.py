@@ -1,13 +1,14 @@
 """Fakes for everything external (section 3.3). Unit tests never touch Docker or the network."""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from core.repo import ProviderName, RepoInfo, RepoNotFound
 from worker.build import CappedLog
-from worker.runtime import Labelled
+from worker.runtime import ContainerSpec, ContainerState, Labelled
 
 
 class FakeClock:
@@ -22,7 +23,12 @@ class FakeClock:
 
 
 class FakeRuntime:
-    """An in-memory ContainerRuntime: labelled containers and networks, as `{id: attempt}`."""
+    """An in-memory ContainerRuntime: labelled containers and networks, as `{id: attempt}`.
+
+    For runs, `on_start(runtime, container_id, spec)` is called as each container starts, so a
+    test can play the app or the runner: write files into a mount, `exit` the container, or set
+    its `logs`. A started container keeps running until something calls `exit`.
+    """
 
     def __init__(
         self,
@@ -41,6 +47,59 @@ class FakeRuntime:
         self.reachable = reachable
         self.unremovable = unremovable or set()
         self.removed: list[str] = []
+        # Runs
+        self.specs: dict[str, ContainerSpec] = {}  # every container ever started, in order
+        self.states: dict[str, ContainerState] = {}
+        self.logs: dict[str, str] = {}
+        self.log_tails: list[int] = []
+        self.exposed: dict[str, list[int]] = {}  # {image: ports}
+        self.network_names: dict[str, str] = {}
+        self.on_start: Callable[[FakeRuntime, str, ContainerSpec], None] | None = None
+        self.fail_start: set[str] = set()  # images whose containers fail to start
+        self._next_id = 0
+
+    def _new_id(self, prefix: str) -> str:
+        self._next_id += 1
+        return f"{prefix}-{self._next_id}"
+
+    def exit(self, container_id: str, code: int = 0, *, oom: bool = False) -> None:
+        self.states[container_id] = ContainerState(running=False, exit_code=code, oom_killed=oom)
+
+    def started(self, *, app: bool) -> list[ContainerSpec]:
+        return [s for s in self.specs.values() if (s.alias == "app") == app]
+
+    async def create_network(self, name: str, attempt: str) -> str:
+        self._require_daemon()
+        network_id = self._new_id("net")
+        self.networks[network_id] = attempt
+        self.network_names[network_id] = name
+        return network_id
+
+    async def start_container(self, spec: ContainerSpec) -> str:
+        self._require_daemon()
+        if spec.image in self.fail_start:
+            raise RuntimeError(f"cannot start {spec.image}")
+        container_id = self._new_id("ctr")
+        self.containers[container_id] = spec.attempt
+        self.specs[container_id] = spec
+        self.states[container_id] = ContainerState(running=True, exit_code=None, oom_killed=False)
+        if self.on_start is not None:
+            self.on_start(self, container_id, spec)
+        return container_id
+
+    async def container_state(self, container_id: str) -> ContainerState:
+        self._require_daemon()
+        return self.states[container_id]
+
+    async def container_logs(self, container_id: str, tail: int) -> str:
+        self._require_daemon()
+        self.log_tails.append(tail)
+        lines = self.logs.get(container_id, "").splitlines(keepends=True)
+        return "".join(lines[-tail:])
+
+    async def image_exposed_ports(self, image: str) -> list[int]:
+        self._require_daemon()
+        return list(self.exposed.get(image, []))
 
     def _require_daemon(self) -> None:
         if not self.reachable:

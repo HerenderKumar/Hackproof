@@ -10,9 +10,10 @@ RUN pip install --no-cache-dir --break-system-packages \
       "pydantic>=2.9,<3"
 
 WORKDIR /opt/hackproof
-# Only the pure modules the runner needs: no settings, no database code.
-COPY core/__init__.py core/hashing.py core/specs.py core/templating.py core/assertions.py ./core/
-COPY runner/__init__.py runner/__main__.py runner/main.py runner/startup.py runner/api_tests.py runner/ui_tests.py ./runner/
+# Only the modules the runner needs: no settings, no database code. M4 has the startup check;
+# M5 adds the API tests and the pure `core` modules they share with the worker (spec schema,
+# templating, assertions), M11 the UI tests.
+COPY runner/__init__.py runner/__main__.py runner/main.py runner/startup.py ./runner/
 
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 RUNNER_VERSION=1
 # The image's own non-root user (section 12.3).

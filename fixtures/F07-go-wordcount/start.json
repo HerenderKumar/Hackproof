@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Students writing to a word limit need a quick, reliable word count.",
+  "explanation": "We are building a word counter. POST /wordcount takes a JSON body with a text field and answers 200 with a JSON object whose words field is the number of words in the text. Words are separated by any amount of whitespace: spaces, tabs or line breaks. An empty text has 0 words."
+}

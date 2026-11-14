@@ -187,7 +187,11 @@ async def run_suite(selected: list[tuple[Fixture, Variant]], pipeline: Pipeline)
     return 0 if matched == len(selected) else 1
 
 
-def real_pipeline(settings: Settings) -> Pipeline:
+def real_pipeline(
+    settings: Settings, specs_of: Callable[[Fixture], list[dict[str, Any]]] = lambda f: f.specs
+) -> Pipeline:
+    """The pipeline every variant goes through. `specs_of` gives the tests to run for a
+    fixture: its hand-written ones, unless a caller has others (`make drafts` runs drafts)."""
     runtime = DockerRuntime()
     provider = LocalGitProvider(settings.local_remotes_dir, SystemClock())
     limits = SandboxLimits.from_settings(settings)
@@ -202,7 +206,7 @@ def real_pipeline(settings: Settings) -> Pipeline:
             [
                 for_mode(spec, "final")
                 | {"spec_id": str(uuid.uuid5(_FIXTURE_TEAMS, f"{fixture.id}:{spec['claim_id']}"))}
-                for spec in fixture.specs
+                for spec in specs_of(fixture)
             ],
             [],
         )

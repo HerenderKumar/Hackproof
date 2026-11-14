@@ -19,6 +19,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from core.drafting import StartText
 from core.specs import ApiSpec
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
@@ -40,12 +41,14 @@ SIGNALS = {  # section 6.6
 }
 CLAIM_FIELDS = {"id", "text", "target", "example_input", "expected_behaviour"}
 EXPECTED_FIELDS = {"build", "startup", "verdicts", "audit", "signals", "brief_must_not_contain"}
+DRAFT_OUTCOMES = {"draft", "needs_clarification", "ui_pending"}
 
 # Never part of a fixture repository, even if a local run left them behind.
 IGNORED = {"node_modules", ".venv", "__pycache__", ".DS_Store", ".pytest_cache"}
 
 _APP_DIR = re.compile(r"^(F\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
 _HISTORY_DIR = re.compile(r"^(H\d)-[a-z0-9]+(?:-[a-z0-9]+)*$")
+_DRAFTING_FILE = re.compile(r"^(D\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*\.json$")
 _CLAIM_ID = re.compile(r"^c[1-3]$")
 _REPO_PATH = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
 
@@ -84,6 +87,9 @@ class Fixture:
     variants: list[Variant]
     # Hand-written API specs (`specs.json`), one per claim that is not a UI claim (M5).
     specs: list[dict[str, Any]] = dataclasses.field(default_factory=list)
+    # What the team wrote at the start (`start.json`): `problem_statement` and `explanation`,
+    # and for F09 `planted`, the sentence in its explanation aimed at the drafter (M6).
+    start: dict[str, str] = dataclasses.field(default_factory=dict)
 
     def variant(self, name: str) -> Variant:
         for variant in self.variants:
@@ -174,6 +180,7 @@ def _load_fixture(directory: Path) -> Fixture:
     claims = _load_claims(directory / "claims.json", slug, claim_ids)
     specs_file = directory / "specs.json"
     specs = _load_specs(specs_file, slug, claim_types) if specs_file.exists() else []
+    start = _load_start(directory / "start.json")
     expected = _read_json(directory / "expected.json", dict)
 
     variant_dirs = sorted(p.name for p in directory.iterdir() if p.is_dir())
@@ -218,6 +225,7 @@ def _load_fixture(directory: Path) -> Fixture:
         claims=claims,
         variants=variants,
         specs=specs,
+        start=start,
     )
 
 
@@ -244,6 +252,19 @@ def _load_specs(path: Path, slug: str, claim_types: dict[str, str]) -> list[dict
         seen.add(spec.claim_id)
         specs.append(spec.model_dump(by_alias=True))
     return specs
+
+
+def _load_start(path: Path) -> dict[str, str]:
+    """The start text, written from the fixture's claims and purpose, never from its code."""
+    where = f"{path.parent.name}/{path.name}"
+    start = _read_json(path, dict)
+    _require_keys(path, start, {"problem_statement", "explanation"}, {"planted"})
+    for field, value in start.items():
+        if not isinstance(value, str) or not value.strip():
+            raise FixtureError(f"{where}: {field} must be a non-empty string")
+    if "planted" in start and start["planted"] not in start["explanation"]:
+        raise FixtureError(f"{where}: the planted sentence must occur in the explanation")
+    return start
 
 
 def _load_claims(path: Path, slug: str, claim_ids: list[str]) -> list[dict[str, str]]:
@@ -303,6 +324,54 @@ def _check_expected(where: str, expected: Any, claim_ids: list[str]) -> None:
 
 
 # --- history fixtures ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class DraftingCase:
+    """A start text with no app behind it: only what drafting should make of each claim."""
+
+    id: str
+    title: str
+    start: StartText
+    expected: dict[str, str]  # claim ID to draft, needs_clarification or ui_pending
+
+
+def load_drafting_cases(root: Path = FIXTURES_DIR) -> list[DraftingCase]:
+    directory = root / "drafting"
+    paths = sorted(p for p in directory.glob("*.json") if _DRAFTING_FILE.match(p.name))
+    return [_load_drafting_case(path) for path in paths]
+
+
+def _load_drafting_case(path: Path) -> DraftingCase:
+    where = f"{path.parent.name}/{path.name}"
+    case = _read_json(path, dict)
+    _require_keys(
+        path, case, {"id", "title", "problem_statement", "explanation", "claims", "expected"}
+    )
+    match = _DRAFTING_FILE.match(path.name)
+    assert match
+    if case["id"] != match.group(1):
+        raise FixtureError(f"{where}: id must be {match.group(1)}, as the file is named")
+    for field in ("title", "problem_statement", "explanation"):
+        if not isinstance(case[field], str) or not case[field].strip():
+            raise FixtureError(f"{where}: {field} must be a non-empty string")
+    claims, expected = case["claims"], case["expected"]
+    if not isinstance(claims, list) or not 1 <= len(claims) <= 3:
+        raise FixtureError(f"{where}: claims must hold one to three claims")
+    for claim in claims:
+        _require_keys(path, claim, CLAIM_FIELDS)
+        if any(not isinstance(value, str) for value in claim.values()):
+            raise FixtureError(f"{where}: every claim field must be a string")
+        if not _CLAIM_ID.match(claim["id"]) or not claim["text"].strip():
+            raise FixtureError(f"{where}: a claim needs an id (c1, c2 or c3) and a text")
+    ids = [claim["id"] for claim in claims]
+    if not isinstance(expected, dict) or sorted(expected) != sorted(ids):
+        raise FixtureError(f"{where}: expected must name an outcome for exactly {ids}")
+    unknown = sorted(set(expected.values()) - DRAFT_OUTCOMES)
+    if unknown:
+        raise FixtureError(f"{where}: expected {unknown} is not one of {sorted(DRAFT_OUTCOMES)}")
+    start = StartText(case["problem_statement"], case["explanation"], claims)
+    return DraftingCase(case["id"], case["title"], start, dict(expected))
 
 
 def load_history_fixtures(root: Path = FIXTURES_DIR) -> list[HistoryFixture]:

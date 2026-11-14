@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Restaurant owners get more reviews than they can read, and want to know at a glance whether a review is happy or unhappy.",
+  "explanation": "We are building a review mood service. POST /classify takes a JSON body with a text field and answers 200 with a JSON object whose label is positive or negative. It counts the review's positive words (good, great, love, excellent, happy, nice, amazing, tasty) and negative words (bad, terrible, hate, awful, sad, poor, horrible, bland). The label is negative when there are more negative words than positive ones, and positive otherwise."
+}

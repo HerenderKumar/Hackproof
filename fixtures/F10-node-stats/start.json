@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Students checking lab results want the mean and median of a list of numbers without opening a spreadsheet.",
+  "explanation": "We are building a small statistics service. GET /stats?values=<numbers separated by commas> answers 200 with a JSON object holding the mean and the median of the numbers. values=1,2,3 gives mean 2 and median 2, and values=1,2,3,10 gives mean 4 and median 2.5."
+}

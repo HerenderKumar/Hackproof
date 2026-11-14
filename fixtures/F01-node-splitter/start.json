@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Friends who share a bill often end up a paisa short or a paisa over, because the split does not add up to what was paid.",
+  "explanation": "We are building a small web service that splits a bill fairly. POST /split takes a JSON body with the total and the number of people, and answers 200 with a JSON object whose shares list has one amount for each person. The shares always add up to the exact total, and no two shares differ by more than 0.01."
+}

@@ -6,7 +6,7 @@ RUN_WORKER := $(COMPOSE) run --rm -T -v "$(CURDIR)":/app -w /app
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures fixture-remotes seed-demo runner-image prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures drafts fixture-remotes seed-demo runner-image prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -48,6 +48,16 @@ format: ## Apply ruff fixes and formatting
 fixtures: env-check runner-image ## Run the whole fixture suite and compare with expected results
 	$(COMPOSE) up -d --wait postgres buildkit
 	$(RUN_WORKER) worker python -m scripts.run_fixtures $(FIXTURE_ARGS)
+
+# Drafts every fixture's tests from its start text and checks the drafts (M6). By default the
+# model's recorded replies in fixtures/llm are replayed: no network, no cost.
+# DRAFTS_MODE=record calls the model and saves its replies. DRAFTS_ARGS="--only F01,D01" drafts
+# a subset; DRAFTS_ARGS=--run also builds every variant and runs the drafted tests against it.
+DRAFTS_MODE ?= replay
+DRAFTS_RUN := $(findstring --run,$(DRAFTS_ARGS))
+drafts: env-check $(if $(DRAFTS_RUN),runner-image) ## Draft the fixtures' tests from their start texts and check them
+	$(if $(DRAFTS_RUN),$(COMPOSE) up -d --wait postgres buildkit)
+	$(RUN_WORKER) -e LLM_MODE=$(DRAFTS_MODE) worker python -m scripts.run_drafts $(DRAFTS_ARGS)
 
 fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)
 	uv run python -m scripts.make_history_fixtures

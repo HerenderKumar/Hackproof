@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Runners who follow training plans written in miles need to convert their distances from kilometres.",
+  "explanation": "We are building a distance converter. GET /convert?km=<number> answers 200 with a JSON object whose miles field is the distance in miles: the kilometres times 0.621371, rounded to three decimal places. km=0 gives miles 0, and a negative km is refused with 422."
+}

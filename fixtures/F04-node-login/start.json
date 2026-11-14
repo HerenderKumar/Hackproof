@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Our college club needs a members-only area, where only someone who has signed in can see their own details.",
+  "explanation": "We are building the club's sign-in service. POST /login takes a JSON body with a username and a password and answers 200 with a token when they are right. The club has a demo member with the username demo and the password hackathon. GET /me with the header Authorization: Bearer <token> answers 200 with the signed-in member's username. GET /me without a valid token is refused with 401."
+}

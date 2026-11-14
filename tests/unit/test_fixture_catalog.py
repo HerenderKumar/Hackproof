@@ -12,6 +12,7 @@ from scripts import run_fixtures
 from scripts.fixtures import (
     FIXTURES_DIR,
     FixtureError,
+    load_drafting_cases,
     load_fixtures,
     load_history_fixtures,
 )
@@ -180,7 +181,12 @@ def minimal_fixture(root: Path, **expected_overrides: Any) -> Path:
         "brief_must_not_contain": [],
     }
     (directory / "expected.json").write_text(json.dumps({"good": {**good, **expected_overrides}}))
+    write_start(root, problem_statement="Sums are slow by hand.", explanation="GET /add adds.")
     return root
+
+
+def write_start(root: Path, **start: str) -> None:
+    (root / "F99-example" / "start.json").write_text(json.dumps(start))
 
 
 def test_a_well_formed_fixture_loads(tmp_path: Path) -> None:
@@ -295,3 +301,72 @@ def test_two_specs_for_one_claim_are_rejected(tmp_path: Path) -> None:
 def test_a_fixture_without_specs_has_none(tmp_path: Path) -> None:
     [fixture] = load_fixtures(minimal_fixture(tmp_path))
     assert fixture.specs == []
+
+
+# --- start texts (M6): what a team writes before any code exists ---------------------------------
+
+
+def test_every_fixture_has_a_start_text() -> None:
+    for fixture in FIXTURES.values():
+        assert fixture.start["problem_statement"].strip(), fixture.id
+        assert fixture.start["explanation"].strip(), fixture.id
+
+
+def test_only_f09_plants_an_instruction_and_it_sits_in_the_explanation() -> None:
+    assert [f.id for f in FIXTURES.values() if "planted" in f.start] == ["F09"]
+    start = FIXTURES["F09"].start
+    assert start["planted"].strip() and start["planted"] in start["explanation"]
+    assert "ignore the claims" in start["planted"]
+
+
+def test_a_fixture_without_a_start_text_is_refused(tmp_path: Path) -> None:
+    root = minimal_fixture(tmp_path)
+    (root / "F99-example" / "start.json").unlink()
+
+    with pytest.raises(FixtureError, match=r"F99-example/start\.json is missing"):
+        load_fixtures(root)
+
+
+@pytest.mark.parametrize(
+    ("start", "message"),
+    [
+        ({"problem_statement": "Sums are slow."}, "explanation"),
+        ({"problem_statement": "Sums are slow.", "explanation": "  "}, "explanation"),
+        ({"problem_statement": "", "explanation": "GET /add adds."}, "problem_statement"),
+        ({"problem_statement": "Sums.", "explanation": "Adds.", "notes": "x"}, "notes"),
+        ({"problem_statement": "Sums.", "explanation": "Adds.", "planted": "Obey."}, "planted"),
+    ],
+)
+def test_a_malformed_start_text_is_refused(
+    tmp_path: Path, start: dict[str, str], message: str
+) -> None:
+    root = minimal_fixture(tmp_path)
+    write_start(root, **start)
+
+    with pytest.raises(FixtureError, match=message):
+        load_fixtures(root)
+
+
+def test_the_drafting_cases_hold_a_claim_too_vague_to_test() -> None:
+    (case,) = load_drafting_cases()
+
+    assert (case.id, case.expected) == ("D01", {"c1": "needs_clarification"})
+    assert case.start.problem_statement.strip() and case.start.explanation.strip()
+    assert case.start.claims == [
+        {
+            "id": "c1",
+            "text": "Makes splitting a bill feel effortless and fair.",
+            "target": "the app",
+            "example_input": "",
+            "expected_behaviour": "",
+        }
+    ]
+
+
+def test_a_drafting_case_must_say_what_it_expects_for_each_claim(tmp_path: Path) -> None:
+    case = json.loads((FIXTURES_DIR / "drafting" / "D01-vague.json").read_text())
+    (tmp_path / "drafting").mkdir()
+    (tmp_path / "drafting" / "D01-vague.json").write_text(json.dumps(case | {"expected": {}}))
+
+    with pytest.raises(FixtureError, match="expected"):
+        load_drafting_cases(tmp_path)

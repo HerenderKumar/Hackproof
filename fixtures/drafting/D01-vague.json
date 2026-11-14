@@ -1,0 +1,18 @@
+{
+  "id": "D01",
+  "title": "A claim too vague to test",
+  "problem_statement": "Splitting a restaurant bill between friends always ends in an argument.",
+  "explanation": "We are building an app that makes splitting bills painless for groups of friends. It will look clean and feel fast.",
+  "claims": [
+    {
+      "id": "c1",
+      "text": "Makes splitting a bill feel effortless and fair.",
+      "target": "the app",
+      "example_input": "",
+      "expected_behaviour": ""
+    }
+  ],
+  "expected": {
+    "c1": "needs_clarification"
+  }
+}

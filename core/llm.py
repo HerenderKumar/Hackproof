@@ -217,16 +217,21 @@ class LLMClient:
                     )
 
 
-def make_llm_client(
-    settings: Settings, sessions: async_sessionmaker[AsyncSession] | None
-) -> LLMClient:
+def make_transport(settings: Settings) -> Transport:
+    """The transport `LLM_MODE` asks for. Replay needs no key."""
     if settings.llm_mode == "replay":
-        return LLMClient(replay_transport(settings.llm_replay_dir), sessions=sessions)
+        return replay_transport(settings.llm_replay_dir)
     key = settings.llm_api_key.get_secret_value() if settings.llm_api_key is not None else ""
     transport = live_transport(settings.llm_base_url, key, settings.llm_timeout_s)
     if settings.llm_mode == "record":
         transport = recording_transport(transport, settings.llm_replay_dir)
-    return LLMClient(transport, sessions=sessions)
+    return transport
+
+
+def make_llm_client(
+    settings: Settings, sessions: async_sessionmaker[AsyncSession] | None
+) -> LLMClient:
+    return LLMClient(make_transport(settings), sessions=sessions)
 
 
 # --- parsing -------------------------------------------------------------------------------------

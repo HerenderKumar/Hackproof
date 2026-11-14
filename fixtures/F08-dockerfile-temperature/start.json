@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Cooks and travellers keep having to convert temperatures from Celsius to Fahrenheit.",
+  "explanation": "We are building a temperature converter. GET /c2f?c=<number> answers 200 with a JSON object whose f field is the temperature in Fahrenheit, rounded to two decimal places. c=100 gives f 212 and c=-40 gives f -40. A c that is not a number is refused with 400."
+}

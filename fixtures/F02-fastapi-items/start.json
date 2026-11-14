@@ -1,0 +1,4 @@
+{
+  "problem_statement": "People forget what food they already have at home and buy it twice.",
+  "explanation": "We are building a pantry tracker with a JSON API. POST /items takes a name and a quantity, adds the item and answers 201 with the new item's id. GET /items/{id} answers 200 with that item's name and quantity."
+}

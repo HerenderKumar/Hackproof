@@ -1,0 +1,4 @@
+{
+  "problem_statement": "Travellers forget things when they pack in a hurry.",
+  "explanation": "We are building a packing list that runs in the browser as a single page. The page has a field labelled New item and an Add button. Typing an item and pressing Add puts it in the list labelled Items and empties the field. There is no API: everything happens on the page."
+}

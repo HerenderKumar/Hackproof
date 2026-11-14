@@ -30,12 +30,14 @@ class Settings(BaseSettings):
     session_ttl_hours: int = 12
     link_ttl_days: int = 7
 
-    # Models (worker only)
-    anthropic_api_key: SecretStr | None = None
-    draft_model: str = "claude-sonnet-5-5"
-    audit_model: str = "claude-sonnet-5-5"
-    brief_model: str = "claude-sonnet-5-5"
-    fast_model: str = "claude-haiku-5-5"
+    # Models (worker only). Calls go through the AI Credits gateway, an OpenAI-compatible
+    # endpoint, with the gateway's own key and model IDs; never straight to Anthropic (D-037).
+    llm_base_url: str = "https://api.aicredits.in/v1"
+    llm_api_key: SecretStr | None = None
+    draft_model: str = "anthropic/claude-sonnet-5.5"
+    audit_model: str = "anthropic/claude-sonnet-5.5"
+    brief_model: str = "anthropic/claude-sonnet-5.5"
+    fast_model: str = "anthropic/claude-haiku-5.5"
     llm_mode: Literal["live", "replay"] = "live"
     llm_timeout_s: int = 60
     audit_max_steps: int = 12
@@ -67,6 +69,15 @@ class Settings(BaseSettings):
 
     log_level: str = "INFO"
 
+    @field_validator("llm_base_url")
+    @classmethod
+    def _llm_base_url_is_safe(cls, value: str) -> str:
+        url = value.rstrip("/")
+        local = url.startswith(("http://localhost", "http://127.0.0.1"))
+        if not url.startswith("https://") and not local:
+            raise ValueError("LLM_BASE_URL must be https, so the API key is never sent in clear")
+        return url
+
     @field_validator("host_artifact_dir")
     @classmethod
     def _artifact_dir_is_absolute(cls, value: Path | None) -> Path | None:
@@ -90,6 +101,9 @@ class Settings(BaseSettings):
             missing.append("ORGANISER_PASSWORD")
         if self.session_secret is None or not self.session_secret.get_secret_value():
             missing.append("SESSION_SECRET")
+        # The API checks a team's repository with the provider when it is registered.
+        if self.repo_provider == "github" and not _has_value(self.github_token):
+            missing.append("GITHUB_TOKEN")
         if missing:
             raise MissingSettingsError("api", missing)
 
@@ -97,8 +111,8 @@ class Settings(BaseSettings):
         missing = []
         if self.host_artifact_dir is None:
             missing.append("HOST_ARTIFACT_DIR")
-        if self.llm_mode == "live" and not _has_value(self.anthropic_api_key):
-            missing.append("ANTHROPIC_API_KEY")
+        if self.llm_mode == "live" and not _has_value(self.llm_api_key):
+            missing.append("LLM_API_KEY")
         if self.repo_provider == "github" and not _has_value(self.github_token):
             missing.append("GITHUB_TOKEN")
         if missing:

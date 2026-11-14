@@ -1,6 +1,6 @@
 name: hackproof
 
-# Each service lists its own environment (D-029): the Claude key reaches the worker only,
+# Each service lists its own environment (D-029): the model gateway key reaches the worker only,
 # the sign-in secrets reach the API only, and only the worker mounts the Docker socket.
 
 x-shared-env: &shared-env
@@ -75,11 +75,12 @@ services:
     logging: *logging
     environment:
       <<: *shared-env
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      DRAFT_MODEL: ${DRAFT_MODEL:-claude-sonnet-5-5}
-      AUDIT_MODEL: ${AUDIT_MODEL:-claude-sonnet-5-5}
-      BRIEF_MODEL: ${BRIEF_MODEL:-claude-sonnet-5-5}
-      FAST_MODEL: ${FAST_MODEL:-claude-haiku-5-5}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.aicredits.in/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      DRAFT_MODEL: ${DRAFT_MODEL:-anthropic/claude-sonnet-5.5}
+      AUDIT_MODEL: ${AUDIT_MODEL:-anthropic/claude-sonnet-5.5}
+      BRIEF_MODEL: ${BRIEF_MODEL:-anthropic/claude-sonnet-5.5}
+      FAST_MODEL: ${FAST_MODEL:-anthropic/claude-haiku-5.5}
       LLM_MODE: ${LLM_MODE:-live}
       LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-60}
       AUDIT_MAX_STEPS: ${AUDIT_MAX_STEPS:-12}

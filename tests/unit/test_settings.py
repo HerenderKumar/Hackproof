@@ -10,14 +10,19 @@ def make(**overrides: object) -> Settings:
 
 
 def test_defaults_match_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("DATABASE_URL", "LLM_MODE", "REPO_PROVIDER", "BUILD_TIMEOUT_S"):
+    for name in (
+        "DATABASE_URL", "LLM_MODE", "REPO_PROVIDER", "BUILD_TIMEOUT_S",
+        "LLM_BASE_URL", "DRAFT_MODEL", "AUDIT_MODEL", "BRIEF_MODEL", "FAST_MODEL",
+    ):  # fmt: skip
         monkeypatch.delenv(name, raising=False)
     s = make()
     assert s.database_url == "postgresql+asyncpg://hp:hp@postgres:5432/hp"
     assert s.session_ttl_hours == 12
     assert s.link_ttl_days == 7
-    assert s.draft_model == "claude-sonnet-5-5"
-    assert s.fast_model == "claude-haiku-5-5"
+    # Models are reached through the AI Credits gateway, under its model IDs (D-037).
+    assert s.llm_base_url == "https://api.aicredits.in/v1"
+    assert (s.draft_model, s.audit_model, s.brief_model) == ("anthropic/claude-sonnet-5.5",) * 3
+    assert s.fast_model == "anthropic/claude-haiku-5.5"
     assert s.buildkit_host == "docker-container://buildkit"
     assert s.runner_image == "hackproof-runner:1"
     assert (s.build_timeout_s, s.run_timeout_s, s.startup_timeout_s) == (480, 600, 60)
@@ -50,20 +55,44 @@ def test_api_requires_organiser_password_and_session_secret() -> None:
 
 
 def test_api_requirements_pass_when_secrets_are_set() -> None:
-    make(organiser_password="pw", session_secret="s" * 32).require_for_api()
+    make(organiser_password="pw", session_secret="s" * 32, repo_provider="local").require_for_api()
 
 
 def test_worker_requires_artifact_dir_and_live_llm_key() -> None:
     with pytest.raises(MissingSettingsError) as err:
-        make(host_artifact_dir=None, anthropic_api_key=None, llm_mode="live").require_for_worker()
+        make(host_artifact_dir=None, llm_api_key=None, llm_mode="live").require_for_worker()
     assert "HOST_ARTIFACT_DIR" in str(err.value)
-    assert "ANTHROPIC_API_KEY" in str(err.value)
+    assert "LLM_API_KEY" in str(err.value)
 
 
-def test_worker_does_not_need_a_claude_key_in_replay_mode(tmp_path: Path) -> None:
+def test_worker_does_not_need_an_llm_key_in_replay_mode(tmp_path: Path) -> None:
     make(
-        host_artifact_dir=tmp_path, anthropic_api_key=None, llm_mode="replay", repo_provider="local"
+        host_artifact_dir=tmp_path, llm_api_key=None, llm_mode="replay", repo_provider="local"
     ).require_for_worker()
+
+
+def test_an_anthropic_key_is_never_used_as_the_llm_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Model calls go through the gateway with its own key, not straight to Anthropic (D-037).
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-used")
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    settings = make(host_artifact_dir=tmp_path, llm_mode="live", repo_provider="local")
+
+    assert not hasattr(settings, "anthropic_api_key")
+    with pytest.raises(MissingSettingsError) as missing:
+        settings.require_for_worker()
+    assert missing.value.names == ["LLM_API_KEY"]
+
+
+def test_the_llm_base_url_is_normalised_and_must_not_send_the_key_in_clear_text() -> None:
+    assert make(llm_base_url="https://api.aicredits.in/v1/").llm_base_url == (
+        "https://api.aicredits.in/v1"
+    )
+    assert make(llm_base_url="http://localhost:9999/v1").llm_base_url == "http://localhost:9999/v1"
+    for url in ("http://api.aicredits.in/v1", "api.aicredits.in/v1", "ftp://example.com"):
+        with pytest.raises(ValueError):
+            make(llm_base_url=url)
 
 
 def test_artifact_dir_must_be_absolute() -> None:
@@ -72,6 +101,18 @@ def test_artifact_dir_must_be_absolute() -> None:
 
 
 def test_secrets_are_not_shown_in_repr() -> None:
-    s = make(organiser_password="hunter2", session_secret="topsecret")
+    s = make(organiser_password="hunter2", session_secret="topsecret", llm_api_key="sk-gateway")
     assert "hunter2" not in repr(s)
     assert "topsecret" not in repr(s)
+    assert "sk-gateway" not in repr(s)
+
+
+def test_the_api_needs_a_github_token_to_validate_github_repositories() -> None:
+    base = {"organiser_password": "pw", "session_secret": "s" * 32}
+
+    make(**base, repo_provider="local").require_for_api()
+    make(**base, repo_provider="github", github_token="t").require_for_api()
+    with pytest.raises(MissingSettingsError) as missing:
+        make(**base, repo_provider="github", github_token=None).require_for_api()
+
+    assert missing.value.names == ["GITHUB_TOKEN"]

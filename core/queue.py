@@ -65,6 +65,11 @@ class Job(BaseModel):
     max_attempts: int
 
 
+def kickoff_key(team_id: uuid.UUID) -> str:
+    """One kickoff snapshot per team, ever."""
+    return f"kickoff:{team_id}"
+
+
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:
     """One poll per team per interval: every enqueue inside a bucket shares a key."""
     return f"poll:{team_id}:{int(at.timestamp()) // poll_interval_s}"

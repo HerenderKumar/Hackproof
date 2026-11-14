@@ -1,12 +1,21 @@
 """The migrated schema matches section 10, and submissions are immutable (invariant 3)."""
 
+import json
+
 import pytest
-from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core.db import models
-from tests.factories import make_event, make_snapshot, make_submission, make_team
+from tests.factories import (
+    CLAIM_ITEMS,
+    make_event,
+    make_snapshot,
+    make_submission,
+    make_team,
+    make_test_spec,
+)
 
 EXPECTED_TABLES = {
     "events", "teams", "judges", "access_links", "repo_observations", "claims", "snapshots",
@@ -108,3 +117,44 @@ async def test_claims_hold_between_one_and_three_items(
         with pytest.raises(DBAPIError):
             async with sessions.begin() as s:
                 s.add(models.Claims(team_id=team.id, version=1, items=items, claims_hash="h"))
+
+
+async def _team(sessions: async_sessionmaker[AsyncSession]) -> models.Team:
+    async with sessions.begin() as s:
+        event = make_event()
+        s.add(event)
+        await s.flush()
+        team = make_team(event.id)
+        s.add(team)
+    return team
+
+
+async def test_claims_carry_the_start_text(sessions: async_sessionmaker[AsyncSession]) -> None:
+    team = await _team(sessions)
+    async with sessions.begin() as s:
+        await s.execute(
+            text(
+                "INSERT INTO claims (team_id, version, items, claims_hash) "
+                "VALUES (:team, 1, CAST(:items AS jsonb), 'h')"
+            ),
+            {"team": team.id, "items": json.dumps(CLAIM_ITEMS[:1])},
+        )
+    async with sessions() as s:
+        claims = await s.scalar(select(models.Claims).where(models.Claims.team_id == team.id))
+    assert claims is not None
+    assert (claims.problem_statement, claims.explanation) == ("", "")
+
+
+async def test_a_spec_needs_a_team_but_not_a_snapshot(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    team = await _team(sessions)
+    async with sessions.begin() as s:
+        s.add(make_test_spec(team.id, "c1"))
+    async with sessions() as s:
+        stored = await s.scalar(select(models.TestSpec))
+    assert stored is not None and (stored.team_id, stored.snapshot_id) == (team.id, None)
+
+    with pytest.raises(IntegrityError):
+        async with sessions.begin() as s:
+            s.add(make_test_spec(None, "c2"))

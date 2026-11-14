@@ -1,11 +1,13 @@
 """Which specs a run carries (M5 design, section 5).
 
-A final run carries exactly the specs its submission pinned: for each claim, the latest version
-approved with `approved_spec_hash = spec_hash` on the submission's snapshot and claims version,
-whatever its status is now (a later claims edit may have superseded it). If those no longer
-reproduce the submission's `test_spec_hash`, the run carries nothing.
+Specs belong to a team's claims version, not to a snapshot: they are drafted from the team's
+text before any code exists (D-047). A final run carries exactly the specs its submission
+pinned: for each claim, the latest version approved with `approved_spec_hash = spec_hash` for the
+submission's team and claims version, whatever its status is now (a later claims edit may have
+superseded it). If those no longer reproduce the submission's `test_spec_hash`, the run carries
+nothing.
 
-A self-check carries the specs its job lists, or else the snapshot's current ones.
+A self-check carries the specs its job lists, or else the team's current ones.
 
 Every spec is cut to its run's mode (`for_mode`), so hidden cases never reach a practice run's
 folder, results or logs. Specs that cannot run are listed with the reason, and each gets an
@@ -55,7 +57,7 @@ def spec_document(row: models.TestSpec) -> dict[str, Any]:
 async def final_run_plan(session: AsyncSession, submission: models.Submission) -> RunPlan | Outcome:
     rows = await _behaviour_specs(
         session,
-        models.TestSpec.snapshot_id == submission.snapshot_id,
+        models.TestSpec.team_id == submission.team_id,
         models.TestSpec.claims_version == submission.claims_version,
     )
     approved = _latest_per_claim(
@@ -76,18 +78,18 @@ async def final_run_plan(session: AsyncSession, submission: models.Submission) -
 
 
 async def self_check_plan(
-    session: AsyncSession, snapshot_id: UUID, spec_ids: list[UUID] | None
+    session: AsyncSession, team_id: UUID, spec_ids: list[UUID] | None
 ) -> RunPlan:
     if spec_ids:
         rows = await _behaviour_specs(
             session,
-            models.TestSpec.snapshot_id == snapshot_id,
+            models.TestSpec.team_id == team_id,
             models.TestSpec.id.in_(spec_ids),
         )
     else:
         live = [
             row
-            for row in await _behaviour_specs(session, models.TestSpec.snapshot_id == snapshot_id)
+            for row in await _behaviour_specs(session, models.TestSpec.team_id == team_id)
             if row.status != "superseded"
         ]
         newest = max((row.claims_version for row in live), default=None)

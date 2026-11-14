@@ -131,7 +131,7 @@ async def test_f01_runs_end_to_end_and_its_verdict_is_stored(
         claims = await session.scalar(select(models.Claims).where(models.Claims.team_id == team.id))
         assert claims is not None
         [spec_document] = F01.specs
-        spec = make_test_spec(snapshot.id, "c1", document=spec_document)
+        spec = make_test_spec(team.id, "c1", document=spec_document)
         session.add(spec)
         submission = make_submission(
             team.id,

@@ -118,6 +118,9 @@ class Claims(Base):
     version: Mapped[int]
     items: Mapped[Any] = _json()
     claims_hash: Mapped[str]
+    # The team's start text, which tests are drafted from with the items (D-047).
+    problem_statement: Mapped[str] = mapped_column(default="", server_default=text("''"))
+    explanation: Mapped[str] = mapped_column(default="", server_default=text("''"))
     created_at: Mapped[datetime] = _now()
 
 
@@ -139,7 +142,9 @@ class TestSpec(Base):
     __test__ = False  # not a pytest class, despite the name
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    snapshot_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("snapshots.id"))
+    # Tests belong to the team's claims version, drafted before any snapshot exists (D-047).
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    snapshot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("snapshots.id"))
     claims_version: Mapped[int]
     version: Mapped[int]
     kind: Mapped[str]

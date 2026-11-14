@@ -93,27 +93,40 @@ CLAIM_ITEMS: list[dict[str, Any]] = [
 
 
 def make_claims(
-    team_id: uuid.UUID, items: list[dict[str, Any]] | None = None, version: int = 1
+    team_id: uuid.UUID,
+    items: list[dict[str, Any]] | None = None,
+    version: int = 1,
+    *,
+    problem_statement: str = "",
+    explanation: str = "",
 ) -> models.Claims:
     items = CLAIM_ITEMS if items is None else items
     return models.Claims(
-        team_id=team_id, version=version, items=items, claims_hash=hash_json(items)
+        team_id=team_id,
+        version=version,
+        items=items,
+        claims_hash=hash_json(items),
+        problem_statement=problem_statement,
+        explanation=explanation,
     )
 
 
 def make_test_spec(
-    snapshot_id: uuid.UUID,
-    claim_id: str = "c1",
+    team_id: uuid.UUID | None,
+    claim_id: str | None = "c1",
     document: dict[str, Any] | None = None,
     status: str = "approved",
     version: int = 1,
     claims_version: int = 1,
+    snapshot_id: uuid.UUID | None = None,
     **overrides: Any,
 ) -> models.TestSpec:
-    """A test_specs row; approved rows carry `approved_at` and the matching approved hash."""
+    """A test_specs row owned by a team's claims version (D-047); approved rows carry
+    `approved_at` and the matching approved hash."""
     doc = {**(document or spec_examples.F01), "claim_id": claim_id}
     digest = spec_hash(doc)
     values: dict[str, Any] = {
+        "team_id": team_id,
         "snapshot_id": snapshot_id,
         "claims_version": claims_version,
         "version": version,

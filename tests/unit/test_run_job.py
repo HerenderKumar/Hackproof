@@ -224,7 +224,7 @@ async def scene(
         snapshot = make_snapshot(team.id, archive_path=str(archive), archive_sha256=digest)
         session.add_all([snapshot, make_claims(team.id)])
         await session.flush()
-        spec = make_test_spec(snapshot.id, "c1")
+        spec = make_test_spec(team.id, "c1")
         session.add(spec)
         pinned = submission_hash or test_spec_hash([spec.spec_hash])
         submission = make_submission(team.id, snapshot.id, test_spec_hash=pinned)

@@ -319,3 +319,8 @@ async def test_a_dependent_job_runs_after_its_dependency_fails(sessions: Session
 
     after = await claim(sessions, "heavy")
     assert after is not None and after.id == dependent
+
+
+def test_one_draft_job_per_team_and_claims_version() -> None:
+    team = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    assert queue.draft_key(team, 3) == f"draft:{team}:3"

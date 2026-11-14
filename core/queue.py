@@ -75,6 +75,11 @@ def prepare_key(team_id: uuid.UUID, commit_sha: str) -> str:
     return f"prepare:{team_id}:{commit_sha}"
 
 
+def draft_key(team_id: uuid.UUID, claims_version: int) -> str:
+    """One drafting job per team and claims version (D-047)."""
+    return f"draft:{team_id}:{claims_version}"
+
+
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:
     """One poll per team per interval: every enqueue inside a bucket shares a key."""
     return f"poll:{team_id}:{int(at.timestamp()) // poll_interval_s}"

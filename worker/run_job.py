@@ -187,7 +187,7 @@ async def _load(
         else:
             listed = job.payload.get("spec_ids")
             spec_ids = [UUID(str(spec_id)) for spec_id in listed] if listed else None
-            plan = await self_check_plan(session, snapshot.id, spec_ids)
+            plan = await self_check_plan(session, snapshot.team_id, spec_ids)
         return snapshot, team, plan
 
 

@@ -38,7 +38,7 @@ async def scene(sessions: Sessions) -> Scene:
         snapshot = make_snapshot(team.id)
         session.add_all([snapshot, make_claims(team.id)])
         await session.flush()
-        specs = {claim: make_test_spec(snapshot.id, claim_id=claim) for claim in ("c1", "c2")}
+        specs = {claim: make_test_spec(team.id, claim_id=claim) for claim in ("c1", "c2")}
         session.add_all(specs.values())
         submission = make_submission(team.id, snapshot.id)
         session.add(submission)

@@ -8,11 +8,13 @@ from sqlalchemy import text
 
 from core.clock import Clock, SystemClock
 from core.db.engine import Sessions, make_engine, make_sessions
+from core.llm import make_llm_client
 from core.logging import configure_logging, get_logger
 from core.providers import make_provider
 from core.settings import Settings, get_settings
 from worker import heartbeat, lanes, scheduler
 from worker.cleanup import startup_cleanup
+from worker.draft_job import make_draft_handler
 from worker.loops import every, wait_until
 from worker.run_job import RUN_KINDS, make_run_handler
 from worker.runtime import ContainerRuntime, DockerRuntime
@@ -31,6 +33,7 @@ def build_handlers(
         "prepare_snapshot": make_prepare_snapshot(
             sessions, provider, settings.artifact_dir / "archives"
         ),
+        "draft_specs": make_draft_handler(sessions, make_llm_client(settings, sessions), settings),
         **dict.fromkeys(RUN_KINDS, run),
     }
 

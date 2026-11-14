@@ -5,7 +5,8 @@ or a stale attempt finishing late, stores nothing new. Problems with the team's 
 (the commit is not there, the repository is gone, a link leads out of the project) are
 results for the team, not errors to retry; anything else is left to the job loop.
 
-When the drafting pipeline exists (M6), finishing a snapshot also enqueues `draft_specs`.
+Tests are drafted from a team's claims, not from its snapshots (D-047), so finishing a
+snapshot enqueues nothing: `draft_specs` follows a claims version.
 """
 
 from pathlib import Path

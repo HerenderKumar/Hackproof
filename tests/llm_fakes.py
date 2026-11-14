@@ -1,5 +1,6 @@
 """Stand-ins for the model gateway: a scripted transport and chat-completions replies."""
 
+import copy
 import json
 from typing import Any
 
@@ -33,3 +34,23 @@ def tool_reply(name: str, arguments: Any, finish: str = "tool_calls") -> dict[st
         "choices": [{"index": 0, "finish_reason": finish, "message": message}],
         "usage": {"prompt_tokens": 390, "completion_tokens": 50, "cost": 0.14},
     }
+
+
+def draft_entry(document: dict[str, Any], claim_id: str = "c1") -> dict[str, Any]:
+    """A `submit_tests` entry: an example spec as the model would send it for `claim_id`."""
+    keys = ("claim_type", "steps", "practice_cases", "final_cases")
+    return {
+        "claim_id": claim_id,
+        "status": "draft",
+        **copy.deepcopy({k: document[k] for k in keys}),
+    }
+
+
+def unclear_entry(reason: str, claim_id: str = "c1") -> dict[str, Any]:
+    return {"claim_id": claim_id, "claim_type": "calculation", "status": "needs_clarification",
+            "reason": reason}  # fmt: skip
+
+
+def draft_answer(*tests: dict[str, Any], finish: str = "tool_calls") -> dict[str, Any]:
+    """A reply calling `submit_tests` with these entries."""
+    return tool_reply("submit_tests", {"tests": list(tests)}, finish)

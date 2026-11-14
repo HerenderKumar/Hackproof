@@ -10,7 +10,10 @@ from core.errors import InfraError
 from core.llm import LLMClient
 from core.specs import ApiSpec, AssertionOp
 from tests import spec_examples
-from tests.llm_fakes import Scripted, tool_reply
+from tests.llm_fakes import Scripted
+from tests.llm_fakes import draft_answer as answer
+from tests.llm_fakes import draft_entry as entry
+from tests.llm_fakes import unclear_entry as unclear
 
 CLAIM_1 = {
     "id": "c1",
@@ -36,29 +39,10 @@ def start(
     return StartText("Splitting bills fairly is fiddly.", explanation, list(claims))
 
 
-def entry(document: dict[str, Any], claim_id: str = "c1") -> dict[str, Any]:
-    """A `submit_tests` entry: the example spec as the model would send it for `claim_id`."""
-    keys = ("claim_type", "steps", "practice_cases", "final_cases")
-    return {
-        "claim_id": claim_id,
-        "status": "draft",
-        **copy.deepcopy({k: document[k] for k in keys}),
-    }
-
-
 def too_few_cases(claim_id: str = "c1") -> dict[str, Any]:
     test = entry(spec_examples.F01, claim_id)
     del test["final_cases"][0]
     return test
-
-
-def unclear(reason: str, claim_id: str = "c1") -> dict[str, Any]:
-    return {"claim_id": claim_id, "claim_type": "calculation", "status": "needs_clarification",
-            "reason": reason}  # fmt: skip
-
-
-def answer(*tests: dict[str, Any], finish: str = "tool_calls") -> dict[str, Any]:
-    return tool_reply("submit_tests", {"tests": list(tests)}, finish)
 
 
 def stored(document: dict[str, Any], claim_id: str = "c1") -> dict[str, Any]:

@@ -1,8 +1,12 @@
 """Fakes for everything external (section 3.3). Unit tests never touch Docker or the network."""
 
+import json
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from core.repo import ProviderName, RepoInfo, RepoNotFound
+from worker.build import CappedLog
 from worker.runtime import Labelled
 
 
@@ -27,9 +31,13 @@ class FakeRuntime:
         networks: dict[str, str] | None = None,
         reachable: bool = True,
         unremovable: set[str] | None = None,
+        images: dict[str, str] | None = None,
+        running: set[str] | None = None,
     ) -> None:
         self.containers = dict(containers or {})
         self.networks = dict(networks or {})
+        self.images = dict(images or {})  # {tag: image ID}
+        self.running = set(running or ())  # names of running containers
         self.reachable = reachable
         self.unremovable = unremovable or set()
         self.removed: list[str] = []
@@ -55,12 +63,73 @@ class FakeRuntime:
     async def remove_network(self, network_id: str) -> None:
         self._remove(self.networks, network_id)
 
+    async def image_id(self, tag: str) -> str | None:
+        self._require_daemon()
+        return self.images.get(tag)
+
+    async def is_running(self, name: str) -> bool:
+        self._require_daemon()
+        return name in self.running
+
     def _remove(self, items: dict[str, str], item_id: str) -> None:
         self._require_daemon()
         if item_id in self.unremovable:
             raise RuntimeError(f"{item_id} is in use")
         del items[item_id]
         self.removed.append(item_id)
+
+
+@dataclass(frozen=True)
+class CommandCall:
+    argv: list[str]
+    env: dict[str, str]
+    deadline: float
+
+
+@dataclass(frozen=True)
+class _Scripted:
+    exit_code: int | None
+    output: str
+    plan: object
+    info: object
+
+
+class FakeCommands:
+    """A `worker.build.CommandRunner` that answers from a script instead of running anything.
+
+    `on("railpack build", exit_code=1, output=...)` scripts the command whose first two words
+    match; `exit_code=None` stands for a command killed at its deadline. A scripted
+    `railpack prepare` writes `plan` and `info` where its `--plan-out` and `--info-out` point.
+    """
+
+    def __init__(self) -> None:
+        self.script: dict[str, _Scripted] = {}
+        self.calls: list[CommandCall] = []
+
+    def on(
+        self,
+        step: str,
+        *,
+        exit_code: int | None = 0,
+        output: str = "",
+        plan: object = None,
+        info: object = None,
+    ) -> None:
+        self.script[step] = _Scripted(exit_code, output, plan, info)
+
+    async def __call__(
+        self, argv: list[str], *, env: dict[str, str], deadline: float, log: CappedLog
+    ) -> int | None:
+        self.calls.append(CommandCall(list(argv), dict(env), deadline))
+        step = " ".join(argv[:2])
+        scripted = self.script.get(step)
+        if scripted is None:
+            raise AssertionError(f"unexpected command: {argv}")
+        log.write(scripted.output.encode())
+        for flag, content in (("--plan-out", scripted.plan), ("--info-out", scripted.info)):
+            if flag in argv and content is not None:
+                Path(argv[argv.index(flag) + 1]).write_text(json.dumps(content))
+        return scripted.exit_code
 
 
 class FakeRepoProvider:

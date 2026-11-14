@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import docker
+import docker.errors
 
 # Every container and network of a run carries this label, set to the run's attempt ID.
 ATTEMPT_LABEL = "hackproof.attempt"
@@ -32,6 +33,14 @@ class ContainerRuntime(Protocol):
     async def remove_container(self, container_id: str) -> None: ...
 
     async def remove_network(self, network_id: str) -> None: ...
+
+    async def image_id(self, tag: str) -> str | None:
+        """The image's ID (`docker image inspect --format '{{.Id}}'`), or None if absent."""
+        ...
+
+    async def is_running(self, name: str) -> bool:
+        """Whether the container called `name` exists and is running."""
+        ...
 
 
 class DockerRuntime:
@@ -76,3 +85,21 @@ class DockerRuntime:
 
     async def remove_network(self, network_id: str) -> None:
         await asyncio.to_thread(self._api().remove_network, network_id)
+
+    async def image_id(self, tag: str) -> str | None:
+        def inspect() -> str | None:
+            try:
+                return str(self._api().inspect_image(tag)["Id"])
+            except docker.errors.ImageNotFound:
+                return None
+
+        return await asyncio.to_thread(inspect)
+
+    async def is_running(self, name: str) -> bool:
+        def inspect() -> bool:
+            try:
+                return bool(self._api().inspect_container(name)["State"]["Running"])
+            except docker.errors.NotFound:
+                return False
+
+        return await asyncio.to_thread(inspect)

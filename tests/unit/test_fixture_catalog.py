@@ -246,7 +246,7 @@ def test_every_claim_except_ui_ones_has_exactly_one_valid_spec() -> None:
 
 def test_the_shared_test_specs_are_the_fixtures_own() -> None:
     by_id = {fixture.id: fixture for fixture in load_fixtures()}
-    shared = {"F01": spec_examples.F01, "F02": spec_examples.F02,
+    shared = {"F01": spec_examples.F01, "F02": spec_examples.F02, "F03": spec_examples.F03,
               "F04": spec_examples.F04, "F07": spec_examples.F07}  # fmt: skip
     for fixture_id, document in shared.items():
         assert by_id[fixture_id].specs == [

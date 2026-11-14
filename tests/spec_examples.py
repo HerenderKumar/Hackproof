@@ -73,6 +73,25 @@ F02: dict[str, Any] = {
     ],
 }  # fmt: skip
 
+F03: dict[str, Any] = {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "classification",
+    "steps": [
+        {
+            "id": "classify",
+            "request": {"method": "POST", "path": "/classify", "json": {"text": "{{case.input.text}}"}},
+            "assertions": [_status(200), {"op": "equals", "path": "$.label", "value": "{{case.expected.label}}"}],
+        }
+    ],
+    "practice_cases": [{"id": "p1", "input": {"text": "I love this great place"}, "expected": {"label": "positive"}}],
+    "final_cases": [
+        {"id": "f1", "input": {"text": "The soup was bland and the bread was poor"}, "expected": {"label": "negative"}},
+        {"id": "f2", "input": {"text": "good food but bad service"}, "expected": {"label": "positive"}, "boundary": True},
+        {"id": "f3", "input": {"text": "TERRIBLE, AWFUL and BLAND!"}, "expected": {"label": "negative"}, "boundary": True},
+    ],
+}  # fmt: skip
+
 _DEMO = {"username": "demo", "password": "hackathon"}
 
 F04: dict[str, Any] = {

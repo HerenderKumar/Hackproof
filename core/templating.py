@@ -13,8 +13,8 @@ from collections.abc import Callable, Mapping
 from decimal import Decimal
 from typing import Any
 
-_PLACEHOLDER = re.compile(r"\{\{([^{}]*)\}\}")  # no braces inside, so two never merge
-_LOOKUP = re.compile(r"^(?:case\.(?:input|expected)|saved)(?:\.[A-Za-z0-9_-]+)+$")
+PLACEHOLDER = re.compile(r"\{\{([^{}]*)\}\}")  # no braces inside, so two never merge
+LOOKUP = re.compile(r"^(?:case\.(?:input|expected)|saved)(?:\.[A-Za-z0-9_-]+)+$")
 
 
 class TemplateError(Exception):
@@ -24,7 +24,7 @@ class TemplateError(Exception):
 def resolve(value: Any, context: Mapping[str, Any]) -> Any:
     """Fill every placeholder in `value` (strings, lists and dicts, recursively)."""
     if isinstance(value, str):
-        whole = _PLACEHOLDER.fullmatch(value)
+        whole = PLACEHOLDER.fullmatch(value)
         if whole is not None:
             return _lookup(whole.group(1), context)
         return _substitute(value, context, encode=None)
@@ -68,12 +68,12 @@ def _substitute(
         text = text_form(_lookup(match.group(1), context))
         return encode(text) if encode is not None else text
 
-    return _PLACEHOLDER.sub(fill, template)
+    return PLACEHOLDER.sub(fill, template)
 
 
 def _lookup(inner: str, context: Mapping[str, Any]) -> Any:
     path = inner.strip()
-    if not _LOOKUP.match(path):
+    if not LOOKUP.match(path):
         raise TemplateError(f"{{{{{inner}}}}} is not a case value or a saved value")
     value: Any = context
     for segment in path.split("."):

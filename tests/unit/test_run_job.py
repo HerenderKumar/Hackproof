@@ -19,7 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core import queue
 from core.db import models
 from core.settings import Settings
-from tests.factories import T0, make_event, make_snapshot, make_submission, make_team
+from core.specs import test_spec_hash
+from tests.factories import (
+    T0,
+    make_claims,
+    make_event,
+    make_snapshot,
+    make_submission,
+    make_team,
+    make_test_spec,
+)
 from tests.fakes import FakeClock, FakeRuntime
 from worker.build import BuildResult
 from worker.lanes import Outcome
@@ -76,6 +85,7 @@ class FakeBuild:
 class FakeRun:
     startup_status: str = "ok"
     error: Exception | None = None
+    tests: list[dict[str, Any]] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
 
     async def __call__(self, runtime: object, **kwargs: Any) -> RunOutcome:
@@ -93,7 +103,7 @@ class FakeRun:
                 "candidate_ports": [8080],
                 "port": 8080 if ok else None,
             },
-            results={"runner_version": "1", "startup": {}, "tests": []} if ok else None,
+            results={"runner_version": "1", "startup": {}, "tests": self.tests} if ok else None,
             app_log_path=kwargs["app_log_path"],
             timed_out=False,
         )
@@ -197,9 +207,13 @@ class Scene:
     team_id: uuid.UUID
     snapshot_id: uuid.UUID
     submission_id: uuid.UUID
+    spec_id: uuid.UUID
 
 
-async def scene(sessions: Sessions, archive: Path, digest: str) -> Scene:
+async def scene(
+    sessions: Sessions, archive: Path, digest: str, *, submission_hash: str | None = None
+) -> Scene:
+    """A team with claims c1 and c2, an approved test for c1, and a submission pinning it."""
     async with sessions.begin() as session:
         event = make_event()
         session.add(event)
@@ -208,17 +222,26 @@ async def scene(sessions: Sessions, archive: Path, digest: str) -> Scene:
         session.add(team)
         await session.flush()
         snapshot = make_snapshot(team.id, archive_path=str(archive), archive_sha256=digest)
-        session.add(snapshot)
+        session.add_all([snapshot, make_claims(team.id)])
         await session.flush()
-        submission = make_submission(team.id, snapshot.id)
+        spec = make_test_spec(snapshot.id, "c1")
+        session.add(spec)
+        pinned = submission_hash or test_spec_hash([spec.spec_hash])
+        submission = make_submission(team.id, snapshot.id, test_spec_hash=pinned)
         session.add(submission)
         await session.flush()
-        return Scene(team.id, snapshot.id, submission.id)
+        return Scene(team.id, snapshot.id, submission.id, spec.id)
 
 
-async def claim(sessions: Sessions, kind: str, key: str, **refs: uuid.UUID) -> queue.Job:
+async def claim(
+    sessions: Sessions,
+    kind: str,
+    key: str,
+    payload: dict[str, Any] | None = None,
+    **refs: uuid.UUID,
+) -> queue.Job:
     async with sessions.begin() as session:
-        await queue.enqueue(session, kind, key, **refs)
+        await queue.enqueue(session, kind, key, payload=payload, **refs)
     async with sessions.begin() as session:
         job = await queue.claim(session, "heavy")
     assert job is not None
@@ -269,7 +292,9 @@ async def test_a_final_run_records_its_build_and_startup(
     assert row.finished_at == T0
     (ran,) = run.calls
     assert ran["mode"] == "final"
-    assert ran["specs"] == [startup_spec("/status")]
+    startup, split = ran["specs"]
+    assert startup == startup_spec("/status")
+    assert split["spec_id"] == str(s.spec_id)
 
 
 async def test_a_self_check_runs_the_snapshot_in_practice_mode(
@@ -355,3 +380,122 @@ async def test_a_second_write_for_the_same_attempt_is_ignored(
     await handle(job)
 
     assert len(await run_results(sessions)) == 1
+
+
+# --- test results ---------------------------------------------------------------------------------
+
+
+def runner_entry(spec_id: uuid.UUID, case_id: str, status: str = "pass") -> dict[str, Any]:
+    return {
+        "spec_id": str(spec_id),
+        "case_id": case_id,
+        "status": status,
+        "error": None,
+        "assertions": [],
+        "steps": [],
+        "request": None,
+        "response": None,
+        "duration_ms": 5,
+        "video_path": None,
+        "trace_path": None,
+    }
+
+
+async def test_results(sessions: Sessions) -> list[models.TestResult]:
+    async with sessions() as session:
+        return list((await session.scalars(select(models.TestResult))).all())
+
+
+async def test_a_final_run_stores_one_row_per_hidden_case(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    archive, digest = make_archive(tmp_path / "archives", {"server.js": ""})
+    s = await scene(sessions, archive, digest)
+    job = await claim(
+        sessions, "final_run", "final_run:r", team_id=s.team_id, submission_id=s.submission_id
+    )
+    run = FakeRun(tests=[runner_entry(s.spec_id, case) for case in ("f1", "f2", "f3")])
+
+    await handler(sessions, tmp_path, FakeBuild(), run, FakeClock(T0))(job)
+
+    rows = await test_results(sessions)
+    assert sorted(r.case_id or "" for r in rows) == ["f1", "f2", "f3"]
+    assert {(r.job_id, r.attempt_id, r.spec_id, r.verdict) for r in rows} == {
+        (job.id, job.attempt_id, s.spec_id, "pass")
+    }
+    assert run.calls[0]["specs"][1]["practice_cases"] == []
+
+
+async def test_results_and_run_results_are_written_once_per_attempt(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    archive, digest = make_archive(tmp_path / "archives", {"server.js": ""})
+    s = await scene(sessions, archive, digest)
+    job = await claim(
+        sessions, "final_run", "final_run:w", team_id=s.team_id, submission_id=s.submission_id
+    )
+    run = FakeRun(tests=[runner_entry(s.spec_id, case) for case in ("f1", "f2", "f3")])
+    handle = handler(sessions, tmp_path, FakeBuild(), run, FakeClock(T0))
+
+    await handle(job)
+    await handle(job)
+
+    assert len(await run_results(sessions)) == 1
+    assert len(await test_results(sessions)) == 3
+
+
+async def test_a_final_run_whose_tests_changed_runs_nothing(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    archive, digest = make_archive(tmp_path / "archives", {"server.js": ""})
+    s = await scene(sessions, archive, digest, submission_hash="x" * 64)
+    job = await claim(
+        sessions, "final_run", "final_run:c", team_id=s.team_id, submission_id=s.submission_id
+    )
+    build = FakeBuild()
+
+    outcome = await handler(sessions, tmp_path, build, FakeRun(), FakeClock(T0))(job)
+
+    assert outcome == Outcome("validation", "the approved tests do not match the submission")
+    assert build.calls == []
+    assert await run_results(sessions) == []
+
+
+async def test_a_self_check_runs_the_specs_in_its_payload(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    archive, digest = make_archive(tmp_path / "archives", {"server.js": ""})
+    s = await scene(sessions, archive, digest)
+    job = await claim(
+        sessions,
+        "self_check_run",
+        "selfcheck:p",
+        payload={"spec_ids": [str(s.spec_id)]},
+        team_id=s.team_id,
+        snapshot_id=s.snapshot_id,
+    )
+    run = FakeRun(tests=[runner_entry(s.spec_id, "p1", "fail")])
+
+    await handler(sessions, tmp_path, FakeBuild(), run, FakeClock(T0))(job)
+
+    (ran,) = run.calls
+    assert ran["mode"] == "practice"
+    assert [spec["spec_id"] for spec in ran["specs"][1:]] == [str(s.spec_id)]
+    assert ran["specs"][1]["final_cases"] == []
+    (row,) = await test_results(sessions)
+    assert (row.case_id, row.verdict) == ("p1", "fail")
+
+
+async def test_a_build_failure_blocks_the_tests_it_would_have_run(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    archive, digest = make_archive(tmp_path / "archives", {"main.py": ""})
+    s = await scene(sessions, archive, digest)
+    job = await claim(
+        sessions, "final_run", "final_run:b", team_id=s.team_id, submission_id=s.submission_id
+    )
+
+    await handler(sessions, tmp_path, FakeBuild("fail", "x"), FakeRun(), FakeClock(T0))(job)
+
+    (row,) = await test_results(sessions)
+    assert (row.spec_id, row.case_id, row.verdict) == (s.spec_id, None, "blocked")

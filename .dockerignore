@@ -1,0 +1,16 @@
+.git
+.venv
+.env
+.env.*
+!.env.example
+.artifacts
+.tools
+.superpowers
+.claude
+web
+fixtures/remotes
+**/__pycache__
+**/node_modules
+.pytest_cache
+.mypy_cache
+.ruff_cache

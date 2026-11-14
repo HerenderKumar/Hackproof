@@ -1,0 +1,109 @@
+name: hackproof
+
+# Each service lists its own environment (D-029): the Claude key reaches the worker only,
+# the sign-in secrets reach the API only, and only the worker mounts the Docker socket.
+
+x-shared-env: &shared-env
+  DATABASE_URL: ${DATABASE_URL:-postgresql+asyncpg://hp:hp@postgres:5432/hp}
+  HOST_ARTIFACT_DIR: ${HOST_ARTIFACT_DIR:?Set HOST_ARTIFACT_DIR to an absolute host path in .env}
+  GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+  REPO_PROVIDER: ${REPO_PROVIDER:-github}
+  LOCAL_REMOTES_DIR: /app/fixtures/remotes
+  RAILPACK_VERSION: ${RAILPACK_VERSION:-0.43.0}
+  RUNNER_VERSION: ${RUNNER_VERSION:-1}
+  LINK_TTL_DAYS: ${LINK_TTL_DAYS:-7}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hp
+      POSTGRES_PASSWORD: hp
+      POSTGRES_DB: hp
+    ports:
+      - "127.0.0.1:54329:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hp -d hp"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  buildkit:
+    image: moby/buildkit:v0.34.2
+    container_name: buildkit
+    privileged: true
+    volumes:
+      - buildkit:/var/lib/buildkit
+
+  api:
+    build:
+      context: .
+      target: api
+    environment:
+      <<: *shared-env
+      ORGANISER_PASSWORD: ${ORGANISER_PASSWORD:?Set ORGANISER_PASSWORD in .env}
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+      SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
+      APP_ENV: ${APP_ENV:-production}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ${HOST_ARTIFACT_DIR}:${HOST_ARTIFACT_DIR}:ro
+      - ./fixtures/remotes:/app/fixtures/remotes:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      target: worker
+    environment:
+      <<: *shared-env
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DRAFT_MODEL: ${DRAFT_MODEL:-claude-sonnet-5-5}
+      AUDIT_MODEL: ${AUDIT_MODEL:-claude-sonnet-5-5}
+      BRIEF_MODEL: ${BRIEF_MODEL:-claude-sonnet-5-5}
+      FAST_MODEL: ${FAST_MODEL:-claude-haiku-5-5}
+      LLM_MODE: ${LLM_MODE:-live}
+      LLM_TIMEOUT_S: ${LLM_TIMEOUT_S:-60}
+      AUDIT_MAX_STEPS: ${AUDIT_MAX_STEPS:-12}
+      AUDIT_MAX_TOKENS: ${AUDIT_MAX_TOKENS:-60000}
+      AUDIT_TIMEOUT_S: ${AUDIT_TIMEOUT_S:-120}
+      BUILDKIT_HOST: ${BUILDKIT_HOST:-docker-container://buildkit}
+      RUNNER_IMAGE: ${RUNNER_IMAGE:-hackproof-runner:1}
+      BUILD_TIMEOUT_S: ${BUILD_TIMEOUT_S:-480}
+      RUN_TIMEOUT_S: ${RUN_TIMEOUT_S:-600}
+      STARTUP_TIMEOUT_S: ${STARTUP_TIMEOUT_S:-60}
+      APP_MEMORY: ${APP_MEMORY:-1g}
+      APP_CPUS: ${APP_CPUS:-1}
+      APP_PIDS_LIMIT: ${APP_PIDS_LIMIT:-256}
+      RUNNER_MEMORY: ${RUNNER_MEMORY:-2g}
+      WATCH_CONCURRENCY: ${WATCH_CONCURRENCY:-4}
+      HEAVY_CONCURRENCY: ${HEAVY_CONCURRENCY:-1}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Same path inside and outside, so bind-mount paths the worker gives Docker resolve on the host.
+      - ${HOST_ARTIFACT_DIR}:${HOST_ARTIFACT_DIR}
+      - ./fixtures/remotes:/app/fixtures/remotes:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      buildkit:
+        condition: service_started
+
+  web:
+    build:
+      context: ./web
+    ports:
+      - "127.0.0.1:3000:80"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  buildkit:

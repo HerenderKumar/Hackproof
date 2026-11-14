@@ -1,0 +1,27 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+web/dist/
+
+# Run artifacts, generated fixture repos and tool output
+.artifacts/
+fixtures/remotes/
+graphify-out/
+.tools/
+
+# Agent and editor workspaces
+.superpowers/
+.claude/
+.DS_Store

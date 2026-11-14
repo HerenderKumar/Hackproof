@@ -42,7 +42,7 @@ ARG RAILPACK_SHA256_ARM64=732ece14eb4f4676a43ebba19431f954edf7b130acb76159ef0f2f
 ARG RAILPACK_SHA256_AMD64=248a8f60f36854aabed6124113631078a802de3461660855fc4de9c26065c1fb
 ARG GRAPHIFY_VERSION=0.9.22
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends curl ripgrep \
+    && apt-get install -y --no-install-recommends curl ripgrep xz-utils \
     && rm -rf /var/lib/apt/lists/*
 # Docker CLI (the worker drives the host daemon through the mounted socket) and buildx for `docker build`.
 COPY --from=docker:29.9.3-cli /usr/local/bin/docker /usr/local/bin/docker
@@ -59,6 +59,28 @@ RUN set -eux; \
     tar -xzf /tmp/railpack.tgz -C /usr/local/bin railpack; \
     rm /tmp/railpack.tgz; \
     railpack --version
+# Railpack runs mise to resolve language versions. Without it, Railpack silently downloads a
+# 58 MB archive from GitHub on first use in every new container (D-042). Bake the exact version
+# this Railpack expects (`railpack --verbose prepare` logs it) at the path Railpack checks.
+# A Railpack upgrade must update MISE_VERSION; tests/integration/test_railpack.py catches a miss.
+# Fetched from mise's own release mirror; the checksums are from the release's SHASUMS256.txt.
+ARG MISE_VERSION=2026.10.14
+ARG MISE_SHA256_ARM64=2b661edd0ba55d4f9fac940d0e108c79893bb30642ac5b532a677b49fa7cb8b3
+ARG MISE_SHA256_AMD64=d2ce450af6abc290d153723f790546d836428aa60f8b61d4a3d2c1dacde5d6c5
+RUN set -eux; \
+    case "${TARGETARCH}" in \
+      arm64) arch=arm64; sum="${MISE_SHA256_ARM64}" ;; \
+      amd64) arch=x64; sum="${MISE_SHA256_AMD64}" ;; \
+      *) echo "unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL --retry 3 -o /tmp/mise.tar.xz \
+      "https://mise.jdx.dev/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-${arch}-musl.tar.xz"; \
+    echo "${sum}  /tmp/mise.tar.xz" | sha256sum -c -; \
+    mkdir -p /tmp/railpack/mise; \
+    tar -xJf /tmp/mise.tar.xz -C /tmp/railpack/mise --strip-components=2 mise/bin/mise; \
+    mv /tmp/railpack/mise/mise "/tmp/railpack/mise/mise-${MISE_VERSION}"; \
+    rm /tmp/mise.tar.xz; \
+    "/tmp/railpack/mise/mise-${MISE_VERSION}" --version
 RUN UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools uv tool install "graphifyy==${GRAPHIFY_VERSION}" \
     && graphify --help >/dev/null
 # The worker image doubles as the pipeline test environment (integration tests, fixture suite).

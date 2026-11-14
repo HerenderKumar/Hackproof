@@ -1,12 +1,15 @@
 """The runner's startup check (section 6.2) and its input and output files (section 14.4)."""
 
 import json
+from decimal import Decimal
 from pathlib import Path
 
+import httpx
 import pytest
 
-from runner.main import run
+from runner.main import load_request, load_request_text, run
 from runner.startup import ProbeFailed, check_startup
+from tests.spec_examples import F07
 
 
 class FakeTime:
@@ -212,3 +215,59 @@ def test_a_failed_startup_is_still_a_complete_result(tmp_path: Path) -> None:
     results = json.loads((tmp_path / "results.json").read_text())
     assert results["startup"]["status"] == "fail"
     assert results["tests"] == []
+
+
+# --- after startup, the API tests ----------------------------------------------------------------
+
+
+def recording_client(seen: list[str]) -> httpx.Client:
+    def answer(request: httpx.Request) -> httpx.Response:
+        seen.append(str(request.url))
+        return httpx.Response(200, json={"words": 3})
+
+    return httpx.Client(transport=httpx.MockTransport(answer))
+
+
+def test_after_startup_the_runner_runs_the_tests_on_the_port_that_answered(tmp_path: Path) -> None:
+    write_spec(
+        tmp_path,
+        candidate_ports=[8080, 3000],
+        specs=[{"kind": "startup", "claim_type": "startup", "steps": [{"health_path": "/"}]},
+               F07 | {"spec_id": "s7"}],
+    )  # fmt: skip
+    time, seen = FakeTime(), []
+    app = FakeApp(time, {"http://app:3000/": [200]})
+
+    run(
+        tmp_path,
+        probe=app,
+        monotonic=time.monotonic,
+        sleep=time.sleep,
+        client=recording_client(seen),
+    )
+
+    results = json.loads((tmp_path / "results.json").read_text())
+    assert [t["case_id"] for t in results["tests"]] == ["f1", "f2", "f3"]
+    assert seen and all(url.startswith("http://app:3000/") for url in seen)
+
+
+def test_no_tests_run_when_startup_fails(tmp_path: Path) -> None:
+    write_spec(tmp_path, startup_timeout_s=2, specs=[F07 | {"spec_id": "s7"}])
+    time, seen = FakeTime(), []
+
+    run(tmp_path, probe=FakeApp(time, {}), monotonic=time.monotonic, sleep=time.sleep,
+        client=recording_client(seen))  # fmt: skip
+
+    assert json.loads((tmp_path / "results.json").read_text())["tests"] == []
+    assert seen == []
+
+
+def test_spec_numbers_reach_the_tests_with_their_exact_text(tmp_path: Path) -> None:
+    (tmp_path / "spec.json").write_text(
+        '{"mode": "final", "base_url": "http://app:8080", "candidate_ports": [8080],'
+        ' "startup_timeout_s": 5, "specs": []}'
+    )
+    request = load_request(tmp_path)
+
+    assert request["candidate_ports"] == [8080]
+    assert load_request_text('{"x": 100.00}')["x"] == Decimal("100.00")

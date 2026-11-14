@@ -5,6 +5,7 @@ registration needs; `head`, `compare` and `snapshot` join it with the milestones
 """
 
 from datetime import datetime
+from pathlib import Path
 from typing import Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -35,6 +36,27 @@ class RepoNotFound(RepoError):
     pass
 
 
+class InvalidCommit(RepoError):
+    """Not a full commit SHA. Branch names and short SHAs move; a snapshot pins one commit."""
+
+
+class CommitNotFound(RepoError):
+    pass
+
+
+class SnapshotFiles(BaseModel):
+    """A commit stored as `ARTIFACT_DIR/archives/<sha256>.tar.gz` (section 12.1)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    commit_sha: str
+    archive_path: Path
+    archive_sha256: str
+    # Self-reported, newest first: [{"sha", "author_date", "committer_date", "message"}]
+    commit_history: list[dict[str, str]]
+    lines_total: int
+
+
 class RepoProvider(Protocol):
     name: ProviderName
 
@@ -43,5 +65,13 @@ class RepoProvider(Protocol):
 
         Raises `InvalidRepoUrl`, `RepoNotFound`, or `InfraError` when the provider cannot
         be reached or is rate-limiting us.
+        """
+        ...
+
+    async def snapshot(self, repo: RepoInfo, sha: str, archives_dir: Path) -> SnapshotFiles:
+        """Archive one commit into `archives_dir`.
+
+        Raises `InvalidCommit`, `CommitNotFound`, `RepoNotFound`, `UnsafeArchive` when the
+        commit has a path or link leading out of the project, or `InfraError`.
         """
         ...

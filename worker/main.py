@@ -9,16 +9,27 @@ from sqlalchemy import text
 from core.clock import Clock, SystemClock
 from core.db.engine import Sessions, make_engine, make_sessions
 from core.logging import configure_logging, get_logger
+from core.providers import make_provider
 from core.settings import Settings, get_settings
 from worker import heartbeat, lanes, scheduler
 from worker.cleanup import startup_cleanup
 from worker.loops import every, wait_until
 from worker.runtime import ContainerRuntime, DockerRuntime
-
-# Job handlers by kind. Each pipeline milestone registers its own.
-HANDLERS: dict[str, lanes.Handler] = {}
+from worker.snapshot import make_prepare_snapshot
 
 SCHEMA_POLL_S = 2.0
+
+
+def build_handlers(
+    settings: Settings, sessions: Sessions, clock: Clock
+) -> dict[str, lanes.Handler]:
+    """Job handlers by kind. Each pipeline milestone adds its own."""
+    provider = make_provider(settings, clock)
+    return {
+        "prepare_snapshot": make_prepare_snapshot(
+            sessions, provider, settings.artifact_dir / "archives"
+        ),
+    }
 
 
 async def run(settings: Settings | None = None) -> None:
@@ -32,8 +43,10 @@ async def run(settings: Settings | None = None) -> None:
         loop.add_signal_handler(sig, stop.set)
 
     engine = make_engine(settings.database_url)
+    sessions, clock = make_sessions(engine), SystemClock()
+    handlers = build_handlers(settings, sessions, clock)
     try:
-        await serve(settings, make_sessions(engine), DockerRuntime(), SystemClock(), HANDLERS, stop)
+        await serve(settings, sessions, DockerRuntime(), clock, handlers, stop)
     finally:
         await engine.dispose()
 

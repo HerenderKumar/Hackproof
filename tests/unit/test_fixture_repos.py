@@ -177,4 +177,11 @@ def test_repositories_use_formats_the_workers_older_git_can_read(tmp_path: Path)
     repo = build_app_remote(F01_GOOD, tmp_path, KICKOFF)
 
     assert git(repo, "rev-parse", "--show-object-format") == "sha1"
-    assert git(repo, "rev-parse", "--show-ref-format") == "files"
+    # A reftable repository records itself here; git 2.39 has no `--show-ref-format` to ask.
+    ref_storage = subprocess.run(
+        ["git", "--git-dir", str(repo), "config", "--get", "extensions.refstorage"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ref_storage.stdout.strip() in ("", "files")

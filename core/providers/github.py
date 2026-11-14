@@ -1,14 +1,30 @@
 """Public GitHub repositories through the REST API (D-005). No GitHub App, no webhooks."""
 
 import re
+import tempfile
+from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
 
 from core.errors import InfraError
-from core.repo import InvalidRepoUrl, ProviderName, RepoInfo, RepoNotFound
+from core.git import GitFailed, run_git
+from core.repo import (
+    CommitNotFound,
+    InvalidRepoUrl,
+    ProviderName,
+    RepoInfo,
+    RepoNotFound,
+    SnapshotFiles,
+)
+from core.snapshots import archive_commit, check_commit_sha
 
 API = "https://api.github.com"
+CLONE_TIMEOUT_S = 180.0
+# What git prints when the repository is not there for us: gone, private, or renamed away.
+_NO_REPO = ("not found", "does not appear to be a git repository", "could not read username")
+# What a server prints when it does not have the commit asked for.
+_NO_COMMIT = ("not our ref", "couldn't find remote ref", "no such remote ref")
 _HOSTS = {"github.com", "www.github.com"}
 _NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
@@ -32,8 +48,17 @@ def parse_repo_url(repo_url: str) -> tuple[str, str]:
 class GitHubProvider:
     name: ProviderName = "github"
 
-    def __init__(self, token: str, client: httpx.AsyncClient) -> None:
+    def __init__(
+        self,
+        token: str,
+        client: httpx.AsyncClient,
+        *,
+        clone_base: str = "https://github.com",
+        work_dir: Path | None = None,
+    ) -> None:
         self._client = client
+        self._clone_base = clone_base.rstrip("/")
+        self._work_dir = work_dir
         self._headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
@@ -56,6 +81,54 @@ class GitHubProvider:
             created_at=data["created_at"],
             is_public=not data["private"],
         )
+
+    async def snapshot(self, repo: RepoInfo, sha: str, archives_dir: Path) -> SnapshotFiles:
+        """Clone without file contents, fetch the commit by SHA, check it out, archive it.
+
+        The clone is public and anonymous: the token is never put on a command line.
+        """
+        check_commit_sha(sha)
+        owner, name = parse_repo_url(repo.url)
+        url = f"{self._clone_base}/{owner}/{name}.git"
+        if self._work_dir is not None:
+            self._work_dir.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="hp-clone-", dir=self._work_dir) as scratch:
+            work = Path(scratch) / "repo"
+            try:
+                await run_git(
+                    "clone", "--quiet", "--filter=blob:none", "--no-checkout", "--", url,
+                    str(work), timeout_s=CLONE_TIMEOUT_S,
+                )  # fmt: skip
+            except GitFailed as exc:
+                if any(sign in exc.stderr.lower() for sign in _NO_REPO):
+                    raise RepoNotFound("GitHub has no public repository at that URL") from None
+                raise
+            git_dir = work / ".git"
+            await self._fetch(git_dir, sha)
+            # Checking the commit out fetches its files in one batch; archiving a partial
+            # clone directly would fetch them one request at a time.
+            await run_git(
+                "checkout", "--quiet", "--detach", sha, cwd=work, timeout_s=CLONE_TIMEOUT_S
+            )
+            return await archive_commit(git_dir, sha, archives_dir)
+
+    async def _fetch(self, git_dir: Path, sha: str) -> None:
+        """Fetch the commit itself, every time.
+
+        A branch may no longer point at it (a force-push replaced it). Asking for it outright
+        also gives one place to tell "the server has no such commit", a result for the team,
+        from a network failure, which is retried. A partial clone would otherwise fetch it
+        silently inside whichever command first touched it, with neither distinction.
+        """
+        try:
+            await run_git(
+                "fetch", "--quiet", "--filter=blob:none", "origin", sha,
+                git_dir=git_dir, timeout_s=CLONE_TIMEOUT_S,
+            )  # fmt: skip
+        except GitFailed as exc:
+            if any(sign in exc.stderr.lower() for sign in _NO_COMMIT):
+                raise CommitNotFound(f"the repository has no commit {sha}") from None
+            raise
 
     async def _get(self, path: str) -> dict[str, object]:
         try:

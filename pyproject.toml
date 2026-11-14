@@ -59,7 +59,8 @@ known-first-party = ["core", "api", "worker", "runner", "scripts", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 "api/migrations/versions/*.py" = ["E501"]
-"tests/*" = ["B011"]
+# Tests may check files from async test functions; nothing else runs on their event loop.
+"tests/*" = ["B011", "ASYNC240"]
 # Command-line scripts report on stdout.
 "scripts/*" = ["T20"]
 

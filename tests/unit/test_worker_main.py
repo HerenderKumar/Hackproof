@@ -16,7 +16,7 @@ from core.settings import Settings
 from tests.factories import T0, make_event, make_team
 from tests.fakes import FakeClock, FakeRuntime
 from tests.helpers import Sessions, all_jobs, enqueue, job_row
-from worker.main import schema_ready, serve
+from worker.main import build_handlers, schema_ready, serve
 
 NOW = T0 + timedelta(hours=3)
 
@@ -145,3 +145,9 @@ async def test_the_worker_waits_quietly_until_the_schema_exists(
     assert "waiting_for_migrations" in logged
     assert "lane_error" not in logged and "Traceback" not in logged
     assert runtime.containers != {}  # nothing is cleaned up before the job table can be read
+
+
+def test_the_worker_registers_a_handler_for_each_built_pipeline_step(tmp_path: Path) -> None:
+    handlers = build_handlers(worker_settings(tmp_path), async_sessionmaker(), FakeClock(NOW))
+
+    assert set(handlers) == {"prepare_snapshot"}

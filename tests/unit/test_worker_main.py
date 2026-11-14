@@ -148,6 +148,8 @@ async def test_the_worker_waits_quietly_until_the_schema_exists(
 
 
 def test_the_worker_registers_a_handler_for_each_built_pipeline_step(tmp_path: Path) -> None:
-    handlers = build_handlers(worker_settings(tmp_path), async_sessionmaker(), FakeClock(NOW))
+    handlers = build_handlers(
+        worker_settings(tmp_path), async_sessionmaker(), FakeClock(NOW), FakeRuntime()
+    )
 
-    assert set(handlers) == {"prepare_snapshot"}
+    assert set(handlers) == {"prepare_snapshot", "final_run", "self_check_run"}

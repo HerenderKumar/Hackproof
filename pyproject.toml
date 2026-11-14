@@ -71,5 +71,6 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["jsonpath_ng.*"]
+# No type stubs ship with these; the Docker SDK is wrapped by worker/runtime.py.
+module = ["jsonpath_ng.*", "docker", "docker.*"]
 ignore_missing_imports = true

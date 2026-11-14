@@ -14,6 +14,7 @@ from core.settings import Settings, get_settings
 from worker import heartbeat, lanes, scheduler
 from worker.cleanup import startup_cleanup
 from worker.loops import every, wait_until
+from worker.run_job import RUN_KINDS, make_run_handler
 from worker.runtime import ContainerRuntime, DockerRuntime
 from worker.snapshot import make_prepare_snapshot
 
@@ -21,14 +22,16 @@ SCHEMA_POLL_S = 2.0
 
 
 def build_handlers(
-    settings: Settings, sessions: Sessions, clock: Clock
+    settings: Settings, sessions: Sessions, clock: Clock, runtime: ContainerRuntime
 ) -> dict[str, lanes.Handler]:
     """Job handlers by kind. Each pipeline milestone adds its own."""
     provider = make_provider(settings, clock)
+    run = make_run_handler(sessions, runtime, settings, clock)
     return {
         "prepare_snapshot": make_prepare_snapshot(
             sessions, provider, settings.artifact_dir / "archives"
         ),
+        **dict.fromkeys(RUN_KINDS, run),
     }
 
 
@@ -43,10 +46,10 @@ async def run(settings: Settings | None = None) -> None:
         loop.add_signal_handler(sig, stop.set)
 
     engine = make_engine(settings.database_url)
-    sessions, clock = make_sessions(engine), SystemClock()
-    handlers = build_handlers(settings, sessions, clock)
+    sessions, clock, runtime = make_sessions(engine), SystemClock(), DockerRuntime()
+    handlers = build_handlers(settings, sessions, clock, runtime)
     try:
-        await serve(settings, sessions, DockerRuntime(), clock, handlers, stop)
+        await serve(settings, sessions, runtime, clock, handlers, stop)
     finally:
         await engine.dispose()
 

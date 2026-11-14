@@ -43,9 +43,9 @@ format: ## Apply ruff fixes and formatting
 	uv run ruff check --fix .
 	uv run ruff format .
 
-# At M3 the suite only lists itself; `runner-image` becomes a prerequisite again when M5 adds the
-# runner's files and the suite starts running tests (D-041).
-fixtures: env-check ## Run the whole fixture suite and compare with expected results
+# Builds and starts every fixture variant through the pipeline (M4: build and startup stages).
+# FIXTURE_ARGS="--only F08" runs a subset; FIXTURE_ARGS=--list only lists the suite.
+fixtures: env-check runner-image ## Run the whole fixture suite and compare with expected results
 	$(COMPOSE) up -d --wait postgres buildkit
 	$(RUN_WORKER) worker python -m scripts.run_fixtures $(FIXTURE_ARGS)
 

@@ -14,9 +14,17 @@ x-shared-env: &shared-env
   LINK_TTL_DAYS: ${LINK_TTL_DAYS:-7}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
+# A fault that repeats (an outage, a crash loop) must not fill the disk with logs.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:16-alpine
+    logging: *logging
     environment:
       POSTGRES_USER: hp
       POSTGRES_PASSWORD: hp
@@ -34,6 +42,7 @@ services:
   buildkit:
     image: moby/buildkit:v0.34.2
     container_name: buildkit
+    logging: *logging
     privileged: true
     volumes:
       - buildkit:/var/lib/buildkit
@@ -42,6 +51,7 @@ services:
     build:
       context: .
       target: api
+    logging: *logging
     environment:
       <<: *shared-env
       ORGANISER_PASSWORD: ${ORGANISER_PASSWORD:?Set ORGANISER_PASSWORD in .env}
@@ -62,6 +72,7 @@ services:
     build:
       context: .
       target: worker
+    logging: *logging
     environment:
       <<: *shared-env
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -99,6 +110,7 @@ services:
   web:
     build:
       context: ./web
+    logging: *logging
     ports:
       - "127.0.0.1:3000:80"
     depends_on:

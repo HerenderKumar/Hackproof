@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1
 # One image definition for the two Python services. Targets: `api`, `worker`.
+# Dependency and tool layers come before the source, so a code change rebuilds only the last COPY.
 
-FROM python:3.12-slim-bookworm AS base
+FROM python:3.12-slim-bookworm AS deps
 COPY --from=ghcr.io/astral-sh/uv:0.11.28 /uv /uvx /usr/local/bin/
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -17,19 +18,23 @@ RUN apt-get update \
     && git config --system --add safe.directory '*'
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
-COPY alembic.ini ./
-COPY core ./core
-COPY api ./api
-COPY worker ./worker
-COPY runner ./runner
-COPY prompts ./prompts
-COPY scripts ./scripts
 
-FROM base AS api
+# The application source, shared by both targets.
+FROM scratch AS source
+COPY alembic.ini /app/
+COPY core /app/core
+COPY api /app/api
+COPY worker /app/worker
+COPY runner /app/runner
+COPY prompts /app/prompts
+COPY scripts /app/scripts
+
+FROM deps AS api
+COPY --from=source /app /app
 EXPOSE 8000
 CMD ["uvicorn", "api.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 
-FROM base AS worker
+FROM deps AS worker
 ARG TARGETARCH
 # Pinned in D-026. The checksums are from the release's checksums.txt.
 ARG RAILPACK_VERSION=0.43.0
@@ -59,4 +64,5 @@ RUN UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools uv tool install "gr
 # The worker image doubles as the pipeline test environment (integration tests, fixture suite).
 RUN uv sync --frozen
 ENV RAILPACK_VERSION=${RAILPACK_VERSION}
+COPY --from=source /app /app
 CMD ["python", "-m", "worker"]

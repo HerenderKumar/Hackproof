@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Adds an item to the pantry, and the item can then be read back by its id.",
+    "target": "POST /items, then GET /items/{id}",
+    "example_input": "{\"name\": \"rice\", \"quantity\": 2}",
+    "expected_behaviour": "POST returns 201 with the new item's id; GET /items/{id} then returns 200 with name rice and quantity 2."
+  }
+]

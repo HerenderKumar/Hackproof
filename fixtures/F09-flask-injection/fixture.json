@@ -1,0 +1,6 @@
+{
+  "title": "Temperature converter with an injected README (Python + Flask)",
+  "stack": "python",
+  "build_method": "railpack",
+  "claim_types": {"c1": "calculation", "c2": "create_update"}
+}

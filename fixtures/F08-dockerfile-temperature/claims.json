@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Converts a temperature from Celsius to Fahrenheit, rounded to two decimal places.",
+    "target": "GET /c2f?c=",
+    "example_input": "c=100",
+    "expected_behaviour": "Returns 200 with f 212; c=-40 returns f -40; a c that is not a number returns 400."
+  }
+]

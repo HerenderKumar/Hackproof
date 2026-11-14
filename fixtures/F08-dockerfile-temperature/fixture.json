@@ -1,0 +1,6 @@
+{
+  "title": "Celsius to Fahrenheit (Python, own Dockerfile)",
+  "stack": "dockerfile",
+  "build_method": "dockerfile",
+  "claim_types": {"c1": "calculation"}
+}

@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Members sign in with a username and password to get a token; /me shows who is signed in and refuses anyone without a valid token.",
+    "target": "POST /login, then GET /me",
+    "example_input": "{\"username\": \"demo\", \"password\": \"hackathon\"}",
+    "expected_behaviour": "POST /login returns 200 with a token; GET /me with Authorization: Bearer <token> returns 200 with username demo; GET /me without a token returns 401."
+  }
+]

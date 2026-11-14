@@ -1,0 +1,6 @@
+{
+  "title": "Review mood (Python + Flask)",
+  "stack": "python",
+  "build_method": "railpack",
+  "claim_types": {"c1": "classification"}
+}

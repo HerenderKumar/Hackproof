@@ -1,0 +1,18 @@
+{
+  "good": {
+    "build": "ok",
+    "startup": "ok",
+    "verdicts": {"c1": "pass"},
+    "audit": {"c1": "implemented"},
+    "signals": [],
+    "brief_must_not_contain": []
+  },
+  "broken": {
+    "build": "ok",
+    "startup": "fail",
+    "verdicts": {"c1": "blocked"},
+    "audit": {"c1": "implemented"},
+    "signals": [],
+    "brief_must_not_contain": []
+  }
+}

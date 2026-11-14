@@ -1,0 +1,6 @@
+{
+  "title": "Pantry items (Python + FastAPI)",
+  "stack": "python",
+  "build_method": "railpack",
+  "claim_types": {"c1": "create_update"}
+}

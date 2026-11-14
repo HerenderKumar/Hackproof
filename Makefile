@@ -6,7 +6,7 @@ RUN_WORKER := $(COMPOSE) run --rm -T -v "$(CURDIR)":/app -w /app
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures seed-demo runner-image prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures fixture-remotes seed-demo runner-image prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -43,9 +43,14 @@ format: ## Apply ruff fixes and formatting
 	uv run ruff check --fix .
 	uv run ruff format .
 
-fixtures: env-check runner-image ## Run the whole fixture suite and compare with expected results
+# At M3 the suite only lists itself; `runner-image` becomes a prerequisite again when M5 adds the
+# runner's files and the suite starts running tests (D-041).
+fixtures: env-check ## Run the whole fixture suite and compare with expected results
 	$(COMPOSE) up -d --wait postgres buildkit
 	$(RUN_WORKER) worker python -m scripts.run_fixtures $(FIXTURE_ARGS)
+
+fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)
+	uv run python -m scripts.make_history_fixtures
 
 seed-demo: env-check runner-image ## Create the demo event and pre-run every job
 	$(COMPOSE) up -d --wait postgres buildkit

@@ -1,0 +1,6 @@
+{
+  "title": "Packing list (static HTML + JS)",
+  "stack": "static",
+  "build_method": "railpack",
+  "claim_types": {"c1": "ui_workflow"}
+}

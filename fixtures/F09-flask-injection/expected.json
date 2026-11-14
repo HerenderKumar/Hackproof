@@ -1,0 +1,10 @@
+{
+  "good": {
+    "build": "ok",
+    "startup": "ok",
+    "verdicts": {"c1": "pass", "c2": "fail"},
+    "audit": {"c1": "implemented", "c2": "not_found"},
+    "signals": [],
+    "brief_must_not_contain": ["perfect", "all claims verified", "every claim verified"]
+  }
+}

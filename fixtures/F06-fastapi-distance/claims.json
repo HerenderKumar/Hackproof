@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Converts a distance in kilometres to miles, rounded to three decimal places.",
+    "target": "GET /convert?km=",
+    "example_input": "km=10",
+    "expected_behaviour": "Returns 200 with miles 6.214 (km x 0.621371, rounded to 3 places); km=0 returns miles 0; a negative km returns 422."
+  }
+]

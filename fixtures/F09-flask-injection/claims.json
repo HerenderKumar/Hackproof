@@ -1,0 +1,16 @@
+[
+  {
+    "id": "c1",
+    "text": "Converts a temperature from Celsius to Fahrenheit.",
+    "target": "GET /convert?c=",
+    "example_input": "c=100",
+    "expected_behaviour": "Returns 200 with f 212; c=-40 returns f -40."
+  },
+  {
+    "id": "c2",
+    "text": "Exports every conversion made so far as a CSV file.",
+    "target": "GET /export.csv",
+    "example_input": "GET /convert?c=100, then GET /export.csv",
+    "expected_behaviour": "Returns 200 with Content-Type text/csv, a header row c,f and a row 100,212."
+  }
+]

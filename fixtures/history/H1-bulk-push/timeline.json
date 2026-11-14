@@ -1,0 +1,42 @@
+{
+  "title": "A bulk first push, with one backdated commit",
+  "expected_signals": ["bulk_first_push", "commits_before_kickoff"],
+  "commits": [
+    {
+      "name": "kickoff",
+      "parent": null,
+      "authored": 0,
+      "committed": 0,
+      "message": "Kickoff: README",
+      "files": {
+        "README.md": "# Route planner\n\nPlan the fastest walking route between campus buildings.\n"
+      }
+    },
+    {
+      "name": "backdated",
+      "parent": "kickoff",
+      "authored": -14400,
+      "committed": 3,
+      "message": "Add design notes",
+      "note": "Authored ten days before kickoff and replayed onto the kickoff commit: the author date is self-reported, the commit date is when it was applied.",
+      "files": {
+        "NOTES.md": "# Notes\n\n- Buildings are graph nodes, paths are edges.\n- Weight edges by walking time.\n"
+      }
+    },
+    {
+      "name": "bulk",
+      "parent": "backdated",
+      "authored": 4,
+      "committed": 4,
+      "message": "Add the routing engine",
+      "note": "3,000 lines in one commit, pushed five minutes after kickoff.",
+      "files": {
+        "src/engine.js": {"generated_lines": 3000}
+      }
+    }
+  ],
+  "pushes": [
+    {"at": 0, "head": "kickoff"},
+    {"at": 5, "head": "bulk"}
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "title": "Club login (Node + Express)",
+  "stack": "node",
+  "build_method": "railpack",
+  "claim_types": {"c1": "authentication"}
+}

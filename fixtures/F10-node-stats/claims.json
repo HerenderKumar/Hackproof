@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Returns the mean and median of a comma-separated list of numbers.",
+    "target": "GET /stats?values=",
+    "example_input": "values=1,2,3",
+    "expected_behaviour": "Returns 200 with mean 2 and median 2; values=1,2,3,10 returns mean 4 and median 2.5."
+  }
+]

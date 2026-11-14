@@ -1,0 +1,6 @@
+{
+  "title": "Distance converter (Python + FastAPI)",
+  "stack": "python",
+  "build_method": "railpack",
+  "claim_types": {"c1": "calculation"}
+}

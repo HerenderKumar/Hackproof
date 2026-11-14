@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Counts the words in a piece of text, where words are separated by any amount of whitespace.",
+    "target": "POST /wordcount",
+    "example_input": "{\"text\": \"the quick brown fox\"}",
+    "expected_behaviour": "Returns 200 with words 4; an empty text returns words 0."
+  }
+]

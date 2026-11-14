@@ -1,0 +1,6 @@
+{
+  "title": "Bill splitter (Node + Express)",
+  "stack": "node",
+  "build_method": "railpack",
+  "claim_types": {"c1": "calculation"}
+}

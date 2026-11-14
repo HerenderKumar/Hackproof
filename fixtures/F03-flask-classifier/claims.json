@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Labels a short review positive or negative from the words it uses: negative when it has more negative words (bad, terrible, hate, awful, sad, poor, horrible, bland) than positive ones (good, great, love, excellent, happy, nice, amazing, tasty), positive otherwise.",
+    "target": "POST /classify",
+    "example_input": "{\"text\": \"The food was terrible and the service was bad\"}",
+    "expected_behaviour": "Returns 200 with label negative; \"I love this great place\" returns label positive."
+  }
+]

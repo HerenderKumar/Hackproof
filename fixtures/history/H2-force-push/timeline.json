@@ -1,0 +1,55 @@
+{
+  "title": "History rewritten after three observed heads",
+  "expected_signals": ["history_rewritten"],
+  "commits": [
+    {
+      "name": "A",
+      "parent": null,
+      "authored": 10,
+      "committed": 10,
+      "message": "Start the meal planner",
+      "files": {
+        "README.md": "# Meal planner\n\nPlan a week of meals and get the shopping list.\n",
+        "planner.py": "MEALS = []\n\n\ndef add_meal(name):\n    MEALS.append(name)\n"
+      }
+    },
+    {
+      "name": "B",
+      "parent": "A",
+      "authored": 40,
+      "committed": 40,
+      "message": "List the week's meals",
+      "files": {
+        "planner.py": "MEALS = []\n\n\ndef add_meal(name):\n    MEALS.append(name)\n\n\ndef week():\n    return list(MEALS)\n"
+      }
+    },
+    {
+      "name": "C",
+      "parent": "B",
+      "authored": 70,
+      "committed": 70,
+      "message": "Add a shopping list (wip)",
+      "files": {
+        "shopping.py": "def shopping_list(meals):\n    return sorted(set(meals))\n"
+      }
+    },
+    {
+      "name": "D",
+      "parent": "A",
+      "authored": 40,
+      "committed": 100,
+      "message": "Week view and shopping list",
+      "note": "B and C squashed onto A and force-pushed: D does not descend from B or C.",
+      "files": {
+        "planner.py": "MEALS = []\n\n\ndef add_meal(name):\n    MEALS.append(name)\n\n\ndef week():\n    return list(MEALS)\n",
+        "shopping.py": "def shopping_list(meals):\n    return sorted(set(meals))\n"
+      }
+    }
+  ],
+  "pushes": [
+    {"at": 10, "head": "A"},
+    {"at": 40, "head": "B"},
+    {"at": 70, "head": "C"},
+    {"at": 100, "head": "D"}
+  ]
+}

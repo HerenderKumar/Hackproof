@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Splits a bill between people so the shares always add up to the exact total, down to the paisa.",
+    "target": "POST /split",
+    "example_input": "{\"total\": 100, \"people\": 3}",
+    "expected_behaviour": "Returns 200 with shares [33.34, 33.33, 33.33]: they sum to exactly 100.00 and no two differ by more than 0.01."
+  }
+]

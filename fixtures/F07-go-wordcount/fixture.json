@@ -1,0 +1,6 @@
+{
+  "title": "Word counter (Go net/http)",
+  "stack": "go",
+  "build_method": "railpack",
+  "claim_types": {"c1": "calculation"}
+}

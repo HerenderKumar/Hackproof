@@ -60,10 +60,12 @@ known-first-party = ["core", "api", "worker", "runner", "scripts", "tests"]
 [tool.ruff.lint.per-file-ignores]
 "api/migrations/versions/*.py" = ["E501"]
 "tests/*" = ["B011"]
+# Command-line scripts report on stdout.
+"scripts/*" = ["T20"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["core"]
+files = ["core", "scripts"]
 strict = true
 plugins = ["pydantic.mypy"]
 

@@ -1,0 +1,9 @@
+[
+  {
+    "id": "c1",
+    "text": "Type an item into the packing list and press Add, and it appears in the list.",
+    "target": "UI: the home page, the New item field and the Add button",
+    "example_input": "Sunscreen",
+    "expected_behaviour": "After typing Sunscreen into New item and pressing Add, the list labelled Items shows Sunscreen and the New item field is empty again."
+  }
+]

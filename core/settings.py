@@ -38,8 +38,12 @@ class Settings(BaseSettings):
     audit_model: str = "anthropic/claude-sonnet-5.5"
     brief_model: str = "anthropic/claude-sonnet-5.5"
     fast_model: str = "anthropic/claude-haiku-5.5"
-    llm_mode: Literal["live", "replay"] = "live"
+    # live calls the gateway; record calls it and saves each reply under llm_replay_dir; replay
+    # answers from those recordings and never touches the network (section 20).
+    llm_mode: Literal["live", "record", "replay"] = "live"
     llm_timeout_s: int = 60
+    llm_replay_dir: Path = Path("fixtures/llm")
+    draft_max_tokens: int = 16000
     audit_max_steps: int = 12
     audit_max_tokens: int = 60000
     audit_timeout_s: int = 120
@@ -111,7 +115,7 @@ class Settings(BaseSettings):
         missing = []
         if self.host_artifact_dir is None:
             missing.append("HOST_ARTIFACT_DIR")
-        if self.llm_mode == "live" and not _has_value(self.llm_api_key):
+        if self.llm_mode in ("live", "record") and not _has_value(self.llm_api_key):
             missing.append("LLM_API_KEY")
         if self.repo_provider == "github" and not _has_value(self.github_token):
             missing.append("GITHUB_TOKEN")

@@ -13,6 +13,7 @@ def test_defaults_match_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in (
         "DATABASE_URL", "LLM_MODE", "REPO_PROVIDER", "BUILD_TIMEOUT_S",
         "LLM_BASE_URL", "DRAFT_MODEL", "AUDIT_MODEL", "BRIEF_MODEL", "FAST_MODEL",
+        "LLM_REPLAY_DIR", "DRAFT_MAX_TOKENS",
     ):  # fmt: skip
         monkeypatch.delenv(name, raising=False)
     s = make()
@@ -30,6 +31,7 @@ def test_defaults_match_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (s.watch_concurrency, s.heavy_concurrency) == (4, 1)
     assert (s.audit_max_steps, s.audit_max_tokens, s.audit_timeout_s) == (12, 60000, 120)
     assert s.llm_mode == "live"
+    assert (s.llm_replay_dir, s.draft_max_tokens) == (Path("fixtures/llm"), 16000)
     assert s.repo_provider == "github"
 
 
@@ -63,6 +65,13 @@ def test_worker_requires_artifact_dir_and_live_llm_key() -> None:
         make(host_artifact_dir=None, llm_api_key=None, llm_mode="live").require_for_worker()
     assert "HOST_ARTIFACT_DIR" in str(err.value)
     assert "LLM_API_KEY" in str(err.value)
+
+
+def test_recording_calls_the_model_so_it_needs_the_key(tmp_path: Path) -> None:
+    with pytest.raises(MissingSettingsError, match="LLM_API_KEY"):
+        make(
+            host_artifact_dir=tmp_path, llm_api_key=None, llm_mode="record", repo_provider="local"
+        ).require_for_worker()
 
 
 def test_worker_does_not_need_an_llm_key_in_replay_mode(tmp_path: Path) -> None:

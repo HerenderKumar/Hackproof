@@ -1,11 +1,13 @@
 """The fixture suite on disk (section 20): what exists, and what each variant must produce."""
 
+import copy
 import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from core.specs import ApiSpec
 from scripts import run_fixtures
 from scripts.fixtures import (
     FIXTURES_DIR,
@@ -13,6 +15,7 @@ from scripts.fixtures import (
     load_fixtures,
     load_history_fixtures,
 )
+from tests import spec_examples
 
 FIXTURES = {f.id: f for f in load_fixtures()}
 HISTORY = {h.id: h for h in load_history_fixtures()}
@@ -227,3 +230,68 @@ def test_listing_shows_nineteen_variants_and_two_history_fixtures(
     assert len(history) == 2
     assert variants[0].split()[:3] == ["F01-node-splitter-good", "node", "railpack"]
     assert "19 app variants, 2 history fixtures" in lines[-1]
+
+
+# --- hand-written specs (M5) ---------------------------------------------------------------------
+
+
+def test_every_claim_except_ui_ones_has_exactly_one_valid_spec() -> None:
+    for fixture in load_fixtures():
+        api_claims = {c for c, t in fixture.claim_types.items() if t != "ui_workflow"}
+        assert sorted(spec["claim_id"] for spec in fixture.specs) == sorted(api_claims), fixture.id
+        for spec in fixture.specs:
+            assert spec["claim_type"] == fixture.claim_types[spec["claim_id"]], fixture.id
+            ApiSpec.model_validate(spec)
+
+
+def test_the_shared_test_specs_are_the_fixtures_own() -> None:
+    by_id = {fixture.id: fixture for fixture in load_fixtures()}
+    shared = {"F01": spec_examples.F01, "F02": spec_examples.F02,
+              "F04": spec_examples.F04, "F07": spec_examples.F07}  # fmt: skip
+    for fixture_id, document in shared.items():
+        assert by_id[fixture_id].specs == [
+            ApiSpec.model_validate(document).model_dump(by_alias=True)
+        ]
+
+
+def write_specs(root: Path, specs: list[dict[str, Any]]) -> None:
+    (root / "F99-example" / "specs.json").write_text(json.dumps(specs))
+
+
+def test_a_spec_breaking_the_case_rules_is_rejected(tmp_path: Path) -> None:
+    root = minimal_fixture(tmp_path)
+    spec = copy.deepcopy(spec_examples.F01)
+    spec["final_cases"] = spec["final_cases"][:2]
+    write_specs(root, [spec])
+
+    with pytest.raises(FixtureError, match=r"specs\.json"):
+        load_fixtures(root)
+
+
+def test_a_spec_for_an_unknown_claim_is_rejected(tmp_path: Path) -> None:
+    root = minimal_fixture(tmp_path)
+    write_specs(root, [spec_examples.F01 | {"claim_id": "c3"}])
+
+    with pytest.raises(FixtureError, match="c3"):
+        load_fixtures(root)
+
+
+def test_a_spec_of_another_type_than_its_claim_is_rejected(tmp_path: Path) -> None:
+    root = minimal_fixture(tmp_path)
+    write_specs(root, [spec_examples.F02])  # create_update, while c1 is a calculation
+
+    with pytest.raises(FixtureError, match="create_update"):
+        load_fixtures(root)
+
+
+def test_two_specs_for_one_claim_are_rejected(tmp_path: Path) -> None:
+    root = minimal_fixture(tmp_path)
+    write_specs(root, [spec_examples.F01, spec_examples.F01])
+
+    with pytest.raises(FixtureError, match="one spec per claim"):
+        load_fixtures(root)
+
+
+def test_a_fixture_without_specs_has_none(tmp_path: Path) -> None:
+    [fixture] = load_fixtures(minimal_fixture(tmp_path))
+    assert fixture.specs == []

@@ -1,0 +1,73 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "calculation",
+    "steps": [
+      {
+        "id": "convert",
+        "request": {
+          "method": "GET",
+          "path": "/convert",
+          "query": {
+            "km": "{{case.input.km}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "approx_equals",
+            "path": "$.miles",
+            "value": "{{case.expected.miles}}",
+            "tolerance": 0.001
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "km": 10
+        },
+        "expected": {
+          "miles": 6.214
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "km": 42.195
+        },
+        "expected": {
+          "miles": 26.219
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "km": 0
+        },
+        "expected": {
+          "miles": 0
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "km": 1000000
+        },
+        "expected": {
+          "miles": 621371
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

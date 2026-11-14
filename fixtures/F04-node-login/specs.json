@@ -1,0 +1,104 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "authentication",
+    "steps": [
+      {
+        "id": "login",
+        "request": {
+          "method": "POST",
+          "path": "/login",
+          "json": {
+            "username": "{{case.input.username}}",
+            "password": "{{case.input.password}}"
+          }
+        },
+        "save": {
+          "token": "$.token"
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          }
+        ]
+      },
+      {
+        "id": "me",
+        "request": {
+          "method": "GET",
+          "path": "/me",
+          "headers": {
+            "Authorization": "Bearer {{saved.token}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "equals",
+            "path": "$.username",
+            "value": "{{case.input.username}}"
+          }
+        ]
+      },
+      {
+        "id": "refuse",
+        "request": {
+          "method": "GET",
+          "path": "/me",
+          "headers": {
+            "Authorization": "{{case.input.bad_auth}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 401
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "username": "demo",
+          "password": "hackathon",
+          "bad_auth": "Bearer wrong-token"
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "username": "demo",
+          "password": "hackathon",
+          "bad_auth": "Bearer 12345"
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "username": "demo",
+          "password": "hackathon",
+          "bad_auth": ""
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "username": "demo",
+          "password": "hackathon",
+          "bad_auth": "Basic ZGVtbzpoYWNrYXRob24="
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

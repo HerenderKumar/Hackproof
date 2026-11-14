@@ -11,9 +11,17 @@ import pytest
 
 from scripts import run_fixtures
 from scripts.fixtures import Fixture, Variant, load_fixtures
-from scripts.run_fixtures import Stages, compare, select_variants, stages_of
+from scripts.run_fixtures import (
+    Stages,
+    compare,
+    reasons_of,
+    select_variants,
+    stages_of,
+    verdicts_of,
+)
 from worker.build import BuildResult
 from worker.run_job import RunReport
+from worker.run_specs import RunPlan
 from worker.sandbox import RunOutcome
 
 FIXTURES = load_fixtures()
@@ -161,3 +169,100 @@ async def test_a_variant_whose_pipeline_raises_is_reported_and_the_suite_goes_on
     assert code == 1
     assert "RuntimeError: buildkit is down" in out
     assert "1 of 2 variants match" in out
+
+
+# --- verdicts (M5) -------------------------------------------------------------------------------
+
+EXPECT_FAIL = {"build": "ok", "startup": "ok", "verdicts": {"c1": "fail"}}
+
+
+def test_matching_verdicts_have_no_differences() -> None:
+    assert compare(EXPECT_FAIL, Stages("ok", "ok", "", verdicts={"c1": "fail"})) == []
+
+
+def test_verdict_differences_are_named() -> None:
+    assert compare(EXPECT_FAIL, Stages("ok", "ok", "", verdicts={"c1": "pass"})) == [
+        "c1: expected fail, got pass"
+    ]
+
+
+def test_ui_claims_are_not_compared_before_m11() -> None:
+    stages = Stages("ok", "ok", "", verdicts={"c1": "unverified"})
+    assert compare(EXPECT_FAIL, stages, ui_claims={"c1"}) == []
+
+
+def test_verdicts_come_from_the_same_mapping_as_the_job() -> None:
+    spec_id = "00000000-0000-0000-0000-000000000001"
+    plan = RunPlan("final", [{"spec_id": spec_id, "claim_id": "c1", "final_cases": []}], [])
+
+    blocked = verdicts_of(RunReport(built("fail"), None), plan, ["c1", "c2"])
+
+    assert blocked == {"c1": "blocked", "c2": "unverified"}
+
+
+SPEC_ID = "00000000-0000-0000-0000-000000000001"
+PLAN = RunPlan("final", [{"spec_id": SPEC_ID, "claim_id": "c1", "final_cases": []}], [])
+STATUS_OK = {"op": "status_equals", "path": None, "expected": 200, "actual": 200, "passed": True}
+
+
+def report_with(*entries: dict[str, object]) -> RunReport:
+    return RunReport(built(), dataclasses.replace(ran(), results={"tests": list(entries)}))
+
+
+def entry(case_id: str, status: str, **fields: object) -> dict[str, object]:
+    return {"spec_id": SPEC_ID, "case_id": case_id, "status": status, **fields}
+
+
+def test_a_failing_claim_is_explained_by_its_first_failed_assertion() -> None:
+    wrong_sum = {"op": "sum_equals", "path": "$.shares[*]", "expected": "100.0",
+                 "actual": "99.99", "passed": False, "note": None, "step": "split"}  # fmt: skip
+    report = report_with(
+        entry("f1", "pass", assertions=[STATUS_OK]),
+        entry("f2", "fail", assertions=[STATUS_OK, wrong_sum]),
+    )
+
+    assert reasons_of(report, PLAN) == {
+        "c1": "f2 split: sum_equals $.shares[*] expected 100.0, got 99.99"
+    }
+
+
+def test_a_note_or_an_error_explains_a_failure_when_there_is_one() -> None:
+    not_json = {"op": "equals", "path": "$.label", "expected": "positive", "actual": None,
+                "passed": False, "note": "the response is not JSON", "step": None}  # fmt: skip
+    stopped = {"type": "connection_refused", "message": "the app stopped answering"}
+
+    assert reasons_of(report_with(entry("f1", "fail", assertions=[not_json])), PLAN) == {
+        "c1": "f1: equals $.label expected positive: the response is not JSON"
+    }
+    assert reasons_of(report_with(entry("f1", "error", error=stopped)), PLAN) == {
+        "c1": "f1: the app stopped answering"
+    }
+
+
+def test_passing_and_blocked_claims_need_no_reason() -> None:
+    assert reasons_of(report_with(entry("f1", "pass", assertions=[STATUS_OK])), PLAN) == {}
+    assert reasons_of(RunReport(built("fail"), None), PLAN) == {}
+
+
+async def test_the_suite_shows_why_a_claim_failed(capsys: pytest.CaptureFixture[str]) -> None:
+    why = "f1 split: sum_equals $.shares[*] expected 100.0, got 99.99"
+
+    async def pipeline(fixture: Fixture, variant: Variant) -> Stages:
+        return Stages("ok", "ok", "up", verdicts={"c1": "fail"}, reasons={"c1": why})
+
+    selected = select_variants(FIXTURES, ["F01-node-splitter-broken"])
+    code = await run_fixtures.run_suite(selected, pipeline)
+
+    assert code == 0
+    assert f"c1=fail ({why})" in capsys.readouterr().out
+
+
+async def test_the_suite_marks_ui_claims_as_pending(capsys: pytest.CaptureFixture[str]) -> None:
+    async def pipeline(fixture: Fixture, variant: Variant) -> Stages:
+        return Stages("ok", "ok", "up", verdicts={"c1": "unverified"})
+
+    code = await run_fixtures.run_suite(select_variants(FIXTURES, ["F05"]), pipeline)
+
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "UI tests arrive in M11" in out

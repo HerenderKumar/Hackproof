@@ -10,11 +10,16 @@ A malformed fixture raises `FixtureError` naming the file and the problem, so th
 half-runs against expectations it cannot compare.
 """
 
+import dataclasses
 import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from pydantic import ValidationError
+
+from core.specs import ApiSpec
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -77,6 +82,8 @@ class Fixture:
     claim_types: dict[str, str]
     claims: list[dict[str, str]]
     variants: list[Variant]
+    # Hand-written API specs (`specs.json`), one per claim that is not a UI claim (M5).
+    specs: list[dict[str, Any]] = dataclasses.field(default_factory=list)
 
     def variant(self, name: str) -> Variant:
         for variant in self.variants:
@@ -165,6 +172,8 @@ def _load_fixture(directory: Path) -> Fixture:
     claim_ids = sorted(claim_types)
 
     claims = _load_claims(directory / "claims.json", slug, claim_ids)
+    specs_file = directory / "specs.json"
+    specs = _load_specs(specs_file, slug, claim_types) if specs_file.exists() else []
     expected = _read_json(directory / "expected.json", dict)
 
     variant_dirs = sorted(p.name for p in directory.iterdir() if p.is_dir())
@@ -208,7 +217,33 @@ def _load_fixture(directory: Path) -> Fixture:
         claim_types=dict(claim_types),
         claims=claims,
         variants=variants,
+        specs=specs,
     )
+
+
+def _load_specs(path: Path, slug: str, claim_types: dict[str, str]) -> list[dict[str, Any]]:
+    """Each spec obeys the case rules and tests one claim of the claim's own type."""
+    where = f"{slug}/specs.json"
+    specs, seen = [], set()
+    for item in _read_json(path, list):
+        try:
+            spec = ApiSpec.model_validate(item)
+        except ValidationError as exc:
+            raise FixtureError(f"{where}: {exc}") from None
+        claim_type = claim_types.get(spec.claim_id)
+        if claim_type is None:
+            raise FixtureError(f"{where}: fixture.json has no claim {spec.claim_id}")
+        if claim_type == "ui_workflow":
+            raise FixtureError(f"{where}: {spec.claim_id} is a UI claim; UI specs arrive in M11")
+        if spec.claim_type != claim_type:
+            raise FixtureError(
+                f"{where}: {spec.claim_id} is a {claim_type} claim, not {spec.claim_type}"
+            )
+        if spec.claim_id in seen:
+            raise FixtureError(f"{where}: one spec per claim, and {spec.claim_id} has two")
+        seen.add(spec.claim_id)
+        specs.append(spec.model_dump(by_alias=True))
+    return specs
 
 
 def _load_claims(path: Path, slug: str, claim_ids: list[str]) -> list[dict[str, str]]:

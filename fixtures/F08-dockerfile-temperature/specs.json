@@ -1,0 +1,72 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "calculation",
+    "steps": [
+      {
+        "id": "convert",
+        "request": {
+          "method": "GET",
+          "path": "/c2f",
+          "query": {
+            "c": "{{case.input.c}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "equals",
+            "path": "$.f",
+            "value": "{{case.expected.f}}"
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "c": 100
+        },
+        "expected": {
+          "f": 212
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "c": 37
+        },
+        "expected": {
+          "f": 98.6
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "c": -40
+        },
+        "expected": {
+          "f": -40
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "c": 0
+        },
+        "expected": {
+          "f": 32
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

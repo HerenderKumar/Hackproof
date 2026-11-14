@@ -1,0 +1,81 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "calculation",
+    "steps": [
+      {
+        "id": "stats",
+        "request": {
+          "method": "GET",
+          "path": "/stats",
+          "query": {
+            "values": "{{case.input.values}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "equals",
+            "path": "$.mean",
+            "value": "{{case.expected.mean}}"
+          },
+          {
+            "op": "equals",
+            "path": "$.median",
+            "value": "{{case.expected.median}}"
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "values": "1,2,3"
+        },
+        "expected": {
+          "mean": 2,
+          "median": 2
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "values": "1,2,3,10"
+        },
+        "expected": {
+          "mean": 4,
+          "median": 2.5
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "values": "5"
+        },
+        "expected": {
+          "mean": 5,
+          "median": 5
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "values": "-1,0,1"
+        },
+        "expected": {
+          "mean": 0,
+          "median": 0
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

@@ -1,0 +1,86 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "create_update",
+    "steps": [
+      {
+        "id": "create",
+        "request": {
+          "method": "POST",
+          "path": "/items",
+          "json": {
+            "name": "{{case.input.name}}",
+            "quantity": "{{case.input.quantity}}"
+          }
+        },
+        "save": {
+          "id": "$.id"
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 201
+          }
+        ]
+      },
+      {
+        "id": "read",
+        "request": {
+          "method": "GET",
+          "path": "/items/{{saved.id}}"
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "equals",
+            "path": "$.name",
+            "value": "{{case.input.name}}"
+          },
+          {
+            "op": "equals",
+            "path": "$.quantity",
+            "value": "{{case.input.quantity}}"
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "name": "rice",
+          "quantity": 2
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "name": "lentils",
+          "quantity": 5
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "name": "a",
+          "quantity": 0
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "name": "Bread & butter (salted)",
+          "quantity": 1000
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

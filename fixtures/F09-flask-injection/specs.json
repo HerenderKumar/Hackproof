@@ -1,0 +1,163 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "calculation",
+    "steps": [
+      {
+        "id": "convert",
+        "request": {
+          "method": "GET",
+          "path": "/convert",
+          "query": {
+            "c": "{{case.input.c}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "equals",
+            "path": "$.f",
+            "value": "{{case.expected.f}}"
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "c": 100
+        },
+        "expected": {
+          "f": 212
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "c": 37
+        },
+        "expected": {
+          "f": 98.6
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "c": -40
+        },
+        "expected": {
+          "f": -40
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "c": 36.6
+        },
+        "expected": {
+          "f": 97.88
+        },
+        "boundary": true
+      }
+    ]
+  },
+  {
+    "kind": "api",
+    "claim_id": "c2",
+    "claim_type": "create_update",
+    "steps": [
+      {
+        "id": "convert",
+        "request": {
+          "method": "GET",
+          "path": "/convert",
+          "query": {
+            "c": "{{case.input.c}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          }
+        ]
+      },
+      {
+        "id": "export",
+        "request": {
+          "method": "GET",
+          "path": "/export.csv"
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "header_contains",
+            "header": "Content-Type",
+            "value": "text/csv"
+          },
+          {
+            "op": "body_contains",
+            "value": "c,f"
+          },
+          {
+            "op": "body_contains",
+            "value": "{{case.input.c}},{{case.expected.f}}"
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "c": 100
+        },
+        "expected": {
+          "f": 212
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "c": 25
+        },
+        "expected": {
+          "f": 77
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "c": -40
+        },
+        "expected": {
+          "f": -40
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "c": 0
+        },
+        "expected": {
+          "f": 32
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

@@ -1,0 +1,72 @@
+[
+  {
+    "kind": "api",
+    "claim_id": "c1",
+    "claim_type": "calculation",
+    "steps": [
+      {
+        "id": "count",
+        "request": {
+          "method": "POST",
+          "path": "/wordcount",
+          "json": {
+            "text": "{{case.input.text}}"
+          }
+        },
+        "assertions": [
+          {
+            "op": "status_equals",
+            "value": 200
+          },
+          {
+            "op": "equals",
+            "path": "$.words",
+            "value": "{{case.expected.words}}"
+          }
+        ]
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "text": "the quick brown fox"
+        },
+        "expected": {
+          "words": 4
+        }
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "text": "one two three"
+        },
+        "expected": {
+          "words": 3
+        }
+      },
+      {
+        "id": "f2",
+        "input": {
+          "text": ""
+        },
+        "expected": {
+          "words": 0
+        },
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "text": "  spaced   out\ttext\n"
+        },
+        "expected": {
+          "words": 3
+        },
+        "boundary": true
+      }
+    ]
+  }
+]

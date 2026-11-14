@@ -66,7 +66,9 @@ The assertion ops and their fields:
 - `header_contains`: `header` (its name), `value`. The header contains the text.
 - `body_contains`: `value`. The raw response body contains the text.
 
-A `path` is a JSONPath into the JSON response, such as `$.total` or `$.items[0].name`.
+A `path` is a plain JSONPath into the JSON response: field names, list indexes and `[*]`, such
+as `$.total`, `$.items[0].name` or `$.shares[*]`. Filters (`[?(...)]`) and functions are not
+supported. An op reads the first value its path finds; only `sum_equals` reads them all.
 
 Templates: a string may hold `{{case.input.name}}`, `{{case.expected.name}}` or `{{saved.name}}`.
 A string that is exactly one template takes the value's own type, so a number stays a number;

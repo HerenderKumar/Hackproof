@@ -86,6 +86,15 @@ def find(path: str, body: Any) -> list[Any]:
     return [match.value for match in _compile(path).find(body)]
 
 
+def readable(path: str) -> bool:
+    """Whether `path` is a JSONPath the runner can follow."""
+    try:
+        _compile(path)
+    except InvalidPath:
+        return False
+    return True
+
+
 def to_json_value(value: Any) -> Any:
     """A JSON-safe copy: `Decimal` as its exact text, `NOT_JSON` as null."""
     if isinstance(value, Decimal):

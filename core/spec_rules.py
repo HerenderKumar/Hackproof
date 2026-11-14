@@ -2,16 +2,18 @@
 
 `ApiSpec` holds a test to the case rules. `problems` checks two more things in code, so that
 a drafted test is never weaker than its claim type demands: the steps can run with the cases
-(every placeholder resolves, every step asserts its status), and the test meets its claim
-type's minimum. Each problem is a short sentence the drafting model can act on.
+(every placeholder resolves, every path is one the runner can read, every step asserts its
+status), and the test meets its claim type's minimum. Each problem is a short sentence the
+drafting model can act on.
 
-Pure: it imports only the spec schema, the templates and the hashing helpers, so the runner
-image can load it.
+Pure: it imports only the spec schema, the templates, the assertions and the hashing
+helpers, so the runner image can load it.
 """
 
 from collections.abc import Callable, Iterable, Iterator
 from typing import Any
 
+from core.assertions import readable
 from core.hashing import canonical_json
 from core.specs import ApiSpec, ApiStep, Assertion
 from core.templating import LOOKUP, PLACEHOLDER
@@ -22,7 +24,7 @@ _REFUSED = (401, 403)
 
 def problems(spec: ApiSpec) -> list[str]:
     """Why `spec` falls short of the rules. Empty when it meets every one."""
-    found = [*_placeholder_problems(spec), *_status_problems(spec)]
+    found = [*_placeholder_problems(spec), *_path_problems(spec), *_status_problems(spec)]
     by_type = _BY_TYPE.get(spec.claim_type)
     if by_type is not None:
         found.extend(by_type(spec))
@@ -58,6 +60,18 @@ def _placeholder_problems(spec: ApiSpec) -> Iterator[str]:
             if missing:
                 yield f'{uses}, but {field} "{name}" is missing from case {", ".join(missing)}'
         saved.update(step.save)
+
+
+def _path_problems(spec: ApiSpec) -> Iterator[str]:
+    for step in spec.steps:
+        paths = [*step.save.values(), *(a.path for a in step.assertions if a.path)]
+        for path in dict.fromkeys(paths):
+            # A placeholder may stand where a field name or an index goes.
+            if not readable(PLACEHOLDER.sub("x", path)):
+                yield (
+                    f'step "{step.id}" has a path the runner cannot read: {path} (a path is a '
+                    "plain JSONPath: field names, list indexes and [*])"
+                )
 
 
 def _status_problems(spec: ApiSpec) -> Iterator[str]:

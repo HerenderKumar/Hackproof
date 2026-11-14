@@ -112,6 +112,37 @@ def test_every_step_asserts_its_status() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    ("where", "path"),
+    [
+        ("assertion", "$.items[?(@.name == 'rice')]"),
+        ("save", "$.id[?(@ > 0)]"),
+        ("assertion", "$.quantities[?(@ < {{case.input.quantity}})]"),
+    ],
+)
+def test_a_path_the_runner_cannot_read_is_a_problem(where: str, path: str) -> None:
+    spec = example("F02")
+    if where == "assertion":
+        spec["steps"][1]["assertions"][1]["path"] = path
+        step = "read"
+    else:
+        spec["steps"][0]["save"] = {"id": path}
+        step = "create"
+
+    assert check(spec) == [
+        f'step "{step}" has a path the runner cannot read: {path} (a path is a plain JSONPath: '
+        "field names, list indexes and [*])"
+    ]
+
+
+def test_a_placeholder_in_a_path_may_stand_for_a_name_or_an_index() -> None:
+    spec = example("F02")
+    spec["steps"][1]["assertions"][1]["path"] = "$.{{case.input.name}}"
+    spec["steps"][1]["assertions"][2]["path"] = "$.history[{{case.input.quantity}}].quantity"
+
+    assert check(spec) == []
+
+
 # --- each claim type -----------------------------------------------------------------------------
 
 

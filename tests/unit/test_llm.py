@@ -194,6 +194,17 @@ async def test_gateway_failures_are_infra_errors(failure: str | int) -> None:
         assert str(failure) in str(caught.value)
 
 
+async def test_a_key_cut_in_two_by_the_error_limit_is_still_hidden() -> None:
+    echoed = "x" * 292 + KEY  # the error text is cut at 300 characters, inside the key
+    send = live_transport(BASE, KEY, 5, client=gateway(lambda r: httpx.Response(401, text=echoed)))
+
+    with pytest.raises(InfraError) as caught:
+        await send({"model": "m"})
+
+    assert KEY[:6] not in str(caught.value)
+    assert "HTTP 401" in str(caught.value)
+
+
 @pytest.mark.parametrize(
     "body", [b"<html>Bad gateway</html>", b'{"error": {"message": "overloaded"}}']
 )

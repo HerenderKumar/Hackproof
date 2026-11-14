@@ -93,7 +93,8 @@ def live_transport(
             cause = type(exc).__name__
             raise InfraError(f"the model gateway could not be reached ({cause})") from None
         if response.status_code != 200:
-            text = response.text[:300].replace(api_key, "[key]") if api_key else response.text[:300]
+            # Mask before cutting: a key cut in two by the limit would leave its first part.
+            text = (response.text.replace(api_key, "[key]") if api_key else response.text)[:300]
             raise InfraError(f"the model gateway answered HTTP {response.status_code}: {text}")
         try:
             data = response.json()

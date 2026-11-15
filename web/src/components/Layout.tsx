@@ -3,16 +3,20 @@ import { NavLink } from "react-router-dom";
 import { isApiError } from "@/api";
 import { ErrorNotice, Notice, Spinner } from "@/components/ui";
 import { useTeam } from "@/queries";
-import { remaining, useNow } from "@/time";
+import { isPast, remaining, useNow } from "@/time";
 import type { TeamView } from "@/types";
 
-const NAV = [
+type NavItem = { to: string; label: string; end?: boolean };
+
+const NAV: NavItem[] = [
   { to: "/team", label: "Overview", end: true },
   { to: "/team/claims", label: "Claims" },
   { to: "/team/tests", label: "Tests" },
   { to: "/team/submit", label: "Submit" },
   { to: "/team/receipt", label: "Receipt" },
 ];
+// Opens once the deadline has passed (M9).
+const PRIOR_WORK: NavItem = { to: "/team/prior-work", label: "Prior work" };
 
 function Clocks({ team }: { team: TeamView }) {
   const now = useNow(team.now);
@@ -48,6 +52,7 @@ export function SignedOut() {
 /** The frame of every team page: who is signed in, the navigation, and the event's clocks. */
 export function Layout({ children }: { children: ReactNode }) {
   const team = useTeam();
+  const now = useNow(team.data?.now);
 
   if (team.isPending) {
     return (
@@ -77,7 +82,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <Clocks team={team.data} />
           </div>
           <nav aria-label="Team pages" className="-mb-px mt-3 flex gap-1 overflow-x-auto">
-            {NAV.map((item) => (
+            {[...NAV, ...(isPast(team.data.event.deadline_at, now) ? [PRIOR_WORK] : [])].map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}

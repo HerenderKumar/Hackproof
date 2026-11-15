@@ -261,3 +261,111 @@ export interface CurrentSubmission {
   submissions_made: number;
   final_run: string;
 }
+
+// --- the kickoff scan and the prior-work report (M9) -----------------------------------------
+
+export type DeviceState = "missing" | "uploading" | "complete" | "incomplete";
+
+export interface DeviceOut {
+  id: string;
+  label: string;
+  state: DeviceState;
+  late: boolean;
+  indexed: boolean;
+  sealed_at: string | null;
+  files: number | null;
+  bytes: number | null;
+  incomplete_reasons: string[];
+  receipt_hash: string | null;
+}
+
+export interface DevicesView {
+  devices: DeviceOut[];
+  can_add: boolean;
+  kickoff_at: string;
+  deadline_at: string;
+  extensions: string[];
+}
+
+export interface DeviceCreated {
+  device: DeviceOut;
+  code: string;
+  download_url: string;
+  command: string;
+}
+
+export interface Totals {
+  total: number;
+  excluded_starter: number;
+  excluded_common: number;
+  eligible: number;
+  matched: number;
+  identical: number;
+  unchanged: number;
+  edited: number;
+  late_matched: number;
+  percent: number | null;
+  late_percent: number | null;
+}
+
+export interface FileShare {
+  path: string;
+  total: number;
+  excluded: number;
+  matched: number;
+  late_matched: number;
+}
+
+export type MatchKind = "identical_file" | "unchanged" | "edited" | "possibly_related";
+
+export interface MatchOut {
+  id: string;
+  match_key: string;
+  ordinal: number;
+  kind: MatchKind;
+  late: boolean;
+  tokens: number;
+  score: number | null;
+  final_path: string;
+  final_start_line: number;
+  final_end_line: number;
+  device_label: string;
+  old_path: string;
+  old_start_line: number;
+  old_end_line: number;
+  also_in: number;
+  explanation: string | null;
+  explained_at: string | null;
+}
+
+export interface PriorWorkView {
+  status: "pending" | "ready" | "no_baseline" | "failed";
+  detail: string | null;
+  submission_id: string;
+  totals: Totals | null;
+  files: FileShare[];
+  devices: DeviceOut[];
+  matches: MatchOut[];
+  matches_total: number;
+  explanation: string | null;
+  explained_at: string | null;
+  code_deleted_at: string | null;
+  can_explain: boolean;
+}
+
+export interface Excerpt {
+  first_line: number;
+  text: string;
+}
+
+export interface MatchExcerpts {
+  id: string;
+  final: Excerpt;
+  old: Excerpt;
+}
+
+export interface ExplanationOut {
+  match_key: string;
+  text: string;
+  created_at: string;
+}

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { send } from "@/api";
+import { KickoffScan } from "@/components/KickoffScan";
 import { Button, ErrorNotice, Field, Notice, Section } from "@/components/ui";
 import { keys, useTeam, useTests } from "@/queries";
 import { isPast, remaining, useNow, when } from "@/time";
@@ -178,6 +179,7 @@ export function TeamHome() {
       </Section>
       <Rules team={team.data} />
       <Repository team={team.data} />
+      <KickoffScan serverNow={team.data.now} />
     </>
   );
 }

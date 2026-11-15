@@ -189,6 +189,15 @@ export function Section({ title, children, aside }: { title: string; children: R
   );
 }
 
+/** A neutral label: it states a fact and never says good or bad. */
+export function Tag({ children }: { children: ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-neutral-300 bg-white px-2.5 py-0.5 text-xs font-medium text-neutral-700">
+      {children}
+    </span>
+  );
+}
+
 /** A long hash or SHA shown in full, wrapping, in a monospace face. */
 export function Mono({ children, className }: { children: ReactNode; className?: string }) {
   return <code className={cx("font-mono text-xs break-all text-neutral-800", className)}>{children}</code>;

@@ -7,6 +7,7 @@ import { Claims } from "@/pages/Claims";
 import { JudgeHome } from "@/pages/JudgeHome";
 import { Login } from "@/pages/Login";
 import { OrgHome } from "@/pages/OrgHome";
+import { PriorWork } from "@/pages/PriorWork";
 import { Receipt } from "@/pages/Receipt";
 import { Redeem } from "@/pages/Redeem";
 import { Submit } from "@/pages/Submit";
@@ -36,6 +37,7 @@ export function App() {
       <Route path="/team/tests" element={<Layout><Tests /></Layout>} />
       <Route path="/team/submit" element={<Layout><Submit /></Layout>} />
       <Route path="/team/receipt" element={<Layout><Receipt /></Layout>} />
+      <Route path="/team/prior-work" element={<Layout><PriorWork /></Layout>} />
       <Route path="/login" element={<Login />} />
       <Route path="/org" element={<Frame title="Organiser" home="/org" wide><OrgHome /></Frame>} />
       <Route path="/org/brief/:submissionId" element={<Frame title="Brief" home="/org"><Brief /></Frame>} />

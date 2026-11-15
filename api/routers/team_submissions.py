@@ -152,6 +152,14 @@ async def submit(
         team_id=team.id,
         depends_on=audit_id,
     )
+    # What of the final code was already on the team's devices before kickoff (M9).
+    await queue.enqueue(
+        db,
+        "prior_work",
+        queue.prior_work_key(submission.id),
+        submission_id=submission.id,
+        team_id=team.id,
+    )
     await db.commit()
     return _receipt(submission, snapshot, team)
 

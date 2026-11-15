@@ -172,3 +172,52 @@ async def shift_event(
             text(f"UPDATE events SET {', '.join(sets)}, claims_lock_at = NULL WHERE id = :id"),
             params,
         )
+
+
+# --- rows without the API (M9, Task 16) ------------------------------------------------------
+
+
+async def indexed_baseline(
+    sessions: Any,
+    root: Path,
+    key: bytes,
+    team_id: uuid.UUID,
+    files: dict[str, bytes],
+    *,
+    late: bool = False,
+    label: str = "laptop",
+    status: str = "indexed",
+) -> Any:
+    """A device and a baseline of the team, its part stored and its index built, as the
+    scan routes and the `index_baseline` job leave them."""
+    from core.db import models
+    from tests.factories import make_baseline, make_device
+
+    async with sessions.begin() as session:
+        device = make_device(team_id, label=label)
+        session.add(device)
+        await session.flush()
+        baseline = make_baseline(
+            device.id, team_id, status, late=late, complete=True,
+            parts=[{"n": 1, "sha256": "x", "bytes": 1}],
+        )  # fmt: skip
+        session.add(baseline)
+    BaselineStore(root, key).write_part(baseline.id, 1, make_part(files))
+    if status == "indexed":
+        build_index(root, key, baseline.id, 1, "test", 1024 * 1024, DEFAULT_SETTINGS)
+    assert isinstance(baseline, models.Baseline)
+    return baseline
+
+
+async def submitted(sessions: Any, root: Path, team_id: uuid.UUID, files: dict[str, bytes]) -> Any:
+    """A snapshot whose archive holds `files`, and a final submission of it."""
+    from tests.factories import make_snapshot, make_submission
+
+    archive, digest = archive_of(root / "archives", files)
+    async with sessions.begin() as session:
+        snapshot = make_snapshot(team_id, archive_path=str(archive), archive_sha256=digest)
+        session.add(snapshot)
+        await session.flush()
+        submission = make_submission(team_id, snapshot.id)
+        session.add(submission)
+    return submission

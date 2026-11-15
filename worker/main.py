@@ -21,6 +21,7 @@ from worker.cleanup import startup_cleanup
 from worker.draft_job import make_draft_handler
 from worker.index_job import make_index_handler
 from worker.loops import every, wait_until
+from worker.prior_work_job import make_prior_work_handler
 from worker.run_job import RUN_KINDS, make_run_handler
 from worker.runtime import ContainerRuntime, DockerRuntime
 from worker.snapshot import make_prepare_snapshot
@@ -54,7 +55,14 @@ def build_handlers(
         "brief": make_brief_handler(sessions, llm, settings),
         "kickoff_snapshot": make_kickoff_handler(sessions, provider, clock),
         "poll_repo": make_poll_handler(sessions, provider, clock),
-        **({"index_baseline": make_index_handler(sessions, pool, settings)} if pool else {}),
+        **(
+            {
+                "index_baseline": make_index_handler(sessions, pool, settings),
+                "prior_work": make_prior_work_handler(sessions, pool, settings),
+            }
+            if pool
+            else {}
+        ),
     }
 
 

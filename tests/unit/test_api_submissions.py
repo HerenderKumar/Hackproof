@@ -130,6 +130,21 @@ async def test_a_submission_queues_an_audit_after_its_final_run(
     )
 
 
+async def test_a_submission_enqueues_its_prior_work_job_once(
+    api: Api, clock: FakeClock, sessions: Sessions
+) -> None:
+    flow, snap, _ = await ready(api, clock, sessions)
+
+    assert (await submit(flow, snap.id)).status_code == 201
+    assert (await submit(flow, snap.id)).status_code == 200  # the same click, sent again
+
+    [row] = await submissions(sessions)
+    [job] = [job for job in await all_jobs(sessions) if job.kind == "prior_work"]
+    assert (job.submission_id, job.team_id, job.idempotency_key, job.lane) == (
+        row.id, flow.team_id, queue.prior_work_key(row.id), "index",
+    )  # fmt: skip
+
+
 async def test_the_receipt_hash_recomputes_from_the_stored_row(
     api: Api, clock: FakeClock, sessions: Sessions
 ) -> None:

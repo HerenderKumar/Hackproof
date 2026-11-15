@@ -23,11 +23,12 @@ from core import queue
 from core.claims import claim_fields
 from core.db import models
 from core.db.engine import Sessions
-from core.drafting import Drafted, StartText, draft_tests
+from core.drafting import Drafted, StartText
 from core.llm import LLMClient
 from core.logging import get_logger
 from core.settings import Settings
 from core.specs import spec_hash
+from core.ui_drafting import draft_with_ui
 from worker.lanes import Handler, Outcome
 
 log = get_logger()
@@ -57,11 +58,12 @@ def make_draft_handler(sessions: Sessions, client: LLMClient, settings: Settings
             explanation=claims.explanation,
             claims=[claim_fields(item) for item in claims.items],
         )
-        drafts = await draft_tests(
+        drafts = await draft_with_ui(
             client,
             start,
             model=settings.draft_model,
             max_tokens=settings.draft_max_tokens,
+            ui_model=settings.ui_draft_model,
             job_id=job.id,
         )
 
@@ -75,7 +77,7 @@ def make_draft_handler(sessions: Sessions, client: LLMClient, settings: Settings
                 return None
             highest = await _highest_versions(session, team_id)
             for drafted in drafts:
-                if drafted.status == "ui_pending":  # typed now; its test arrives with M11
+                if drafted.status == "ui_pending":  # UI drafting is off: typed, with no test
                     continue
                 session.add(_row(team_id, version, drafted, highest.get(drafted.claim_id, 0) + 1))
             await session.execute(
@@ -126,8 +128,9 @@ def _row(
     team_id: uuid.UUID, claims_version: int, drafted: Drafted, version: int
 ) -> models.TestSpec:
     # A claim needing clarification has no test: empty steps and cases, hashed as they are.
+    kind = "ui" if drafted.claim_type == "ui_workflow" else "api"
     document: dict[str, Any] = drafted.spec or {
-        "kind": "api",
+        "kind": kind,
         "claim_type": drafted.claim_type,
         "steps": [],
         "practice_cases": [],
@@ -138,7 +141,7 @@ def _row(
         snapshot_id=None,
         claims_version=claims_version,
         version=version,
-        kind="api",
+        kind=kind,
         claim_id=drafted.claim_id,
         claim_type=drafted.claim_type,
         steps=document["steps"],

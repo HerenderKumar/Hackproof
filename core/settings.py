@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     llm_timeout_s: int = 60
     llm_replay_dir: Path = Path("fixtures/llm")
     draft_max_tokens: int = 16000
+    # Browser tests for UI claims (M11): a second drafting call. Haiku 5.5 drafted F05's test
+    # first time for ₹0.10 (D-059); empty DRAFT_UI_MODEL means DRAFT_MODEL. Off, a UI claim is
+    # typed and left without a test.
+    draft_ui_tests: bool = True
+    draft_ui_model: str | None = "anthropic/claude-haiku-5.5"
     # What one team may ask for (M7): each claims version is a model call, each submission a
     # final run.
     max_claims_versions: int = 20
@@ -82,6 +87,13 @@ class Settings(BaseSettings):
     heavy_concurrency: int = 1
 
     log_level: str = "INFO"
+
+    @property
+    def ui_draft_model(self) -> str | None:
+        """The model that drafts browser tests, or None when UI drafting is off."""
+        if not self.draft_ui_tests:
+            return None
+        return self.draft_ui_model or self.draft_model
 
     @field_validator("llm_base_url")
     @classmethod

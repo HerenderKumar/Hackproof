@@ -32,13 +32,14 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from core.drafting import SUBMIT_TESTS, Drafted, StartText, draft_tests
+from core.drafting import SUBMIT_TESTS, Drafted, StartText
 from core.llm import LLMClient, Transport, make_transport, request_key
 from core.logging import configure_logging
 from core.settings import Settings, get_settings
 from core.spec_rules import problems
-from core.specs import ApiSpec
+from core.specs import ApiSpec, UiSpec
 from core.templating import PLACEHOLDER
+from core.ui_drafting import SUBMIT_UI_TESTS, draft_with_ui
 from scripts.fixtures import (
     DraftingCase,
     Fixture,
@@ -69,8 +70,8 @@ def check_fixture(fixture: Fixture, drafts: list[Drafted]) -> list[str]:
             found.append(f"{claim_id}: no answer")
         elif draft.claim_type != claim_type:
             found.append(f"{claim_id}: typed {draft.claim_type}, the fixture says {claim_type}")
-        elif claim_type == "ui_workflow":
-            continue  # typed now; its test arrives with the UI tests (M11)
+        elif claim_type == "ui_workflow" and draft.status == "ui_pending":
+            continue  # UI drafting is off: typed, with no test
         elif draft.status != "draft" or draft.spec is None:
             found.append(f"{claim_id}: {draft.status}, not a draft: {draft.reason}")
         else:
@@ -120,8 +121,9 @@ def _by_claim(drafts: list[Drafted]) -> dict[str, Drafted]:
 
 
 def _spec_problems(spec: dict[str, Any]) -> list[str]:
+    model = UiSpec if spec.get("kind") == "ui" else ApiSpec
     try:
-        return problems(ApiSpec.model_validate(spec))
+        return problems(model.model_validate(spec))
     except ValidationError as exc:
         return [str(exc)]
 
@@ -129,11 +131,16 @@ def _spec_problems(spec: dict[str, Any]) -> list[str]:
 def _shape(draft: Drafted) -> str:
     """The endpoints the test calls, each once: `GET /convert, GET /export.csv`."""
     steps = draft.spec["steps"] if draft.spec is not None else []
-    return ", ".join(sorted({_endpoint(step["request"]) for step in steps}))
+    return ", ".join(sorted({_endpoint(step) for step in steps}))
 
 
-def _endpoint(request: dict[str, Any]) -> str:
-    """Method and route: a query written into the path is dropped, a placeholder reads `{}`."""
+def _endpoint(step: dict[str, Any]) -> str:
+    """Method and route: a query written into the path is dropped, a placeholder reads `{}`.
+    A UI step reads as its action and what it acts on."""
+    if "request" not in step:
+        target = step.get("path") or json.dumps(step.get("locator"), sort_keys=True)
+        return f"{step['action']} {target}"
+    request = step["request"]
     route = PLACEHOLDER.sub("{}", str(request["path"]).split("?")[0])
     return f"{request['method']} {route}"
 
@@ -148,8 +155,12 @@ async def draft_suite(
     check held, and each fixture's drafts by fixture ID."""
 
     async def draft(start: StartText) -> list[Drafted]:
-        return await draft_tests(
-            client, start, model=settings.draft_model, max_tokens=settings.draft_max_tokens
+        return await draft_with_ui(
+            client,
+            start,
+            model=settings.draft_model,
+            max_tokens=settings.draft_max_tokens,
+            ui_model=settings.ui_draft_model,
         )
 
     async def fixture_drafts(fixture: Fixture) -> tuple[list[Drafted], list[str]]:
@@ -241,6 +252,7 @@ async def _run(
     ok, drafted = await draft_suite(client, settings, fixtures, cases)
     if prune:
         removed = prune_recordings(settings.llm_replay_dir, used, SUBMIT_TESTS.name)
+        removed += prune_recordings(settings.llm_replay_dir, used, SUBMIT_UI_TESTS.name)
         print(f"{len(used)} requests recorded, {removed} stale recordings removed")
     if not run_apps:
         return 0 if ok else 1

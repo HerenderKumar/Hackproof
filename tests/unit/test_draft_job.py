@@ -15,9 +15,10 @@ from core.specs import ApiSpec, spec_hash
 from tests import spec_examples
 from tests.factories import CLAIM_ITEMS, make_claims, make_event, make_team, make_test_spec
 from tests.helpers import Sessions, claimed
-from tests.llm_fakes import Scripted, draft_answer, draft_entry, unclear_entry
+from tests.llm_fakes import Scripted, draft_answer, draft_entry, ui_answer, ui_entry, unclear_entry
 from worker.draft_job import make_draft_handler
 from worker.lanes import Outcome
+from worker.run_specs import spec_document
 
 SETTINGS = Settings(
     _env_file=None,  # type: ignore[call-arg]
@@ -68,8 +69,10 @@ async def draft_job(sessions: Sessions, team_id: uuid.UUID | None, version: Any 
     return await claimed(sessions, "draft_specs", key=key, payload=payload, team_id=team_id)
 
 
-async def run(sessions: Sessions, transport: Scripted, job: queue.Job) -> Outcome | None:
-    handler = make_draft_handler(sessions, LLMClient(transport, sessions=sessions), SETTINGS)
+async def run(
+    sessions: Sessions, transport: Scripted, job: queue.Job, settings: Settings = SETTINGS
+) -> Outcome | None:
+    handler = make_draft_handler(sessions, LLMClient(transport, sessions=sessions), settings)
     return await handler(job)
 
 
@@ -153,16 +156,43 @@ async def test_a_claim_needing_clarification_is_stored_with_its_reason_and_no_st
     )  # fmt: skip
 
 
-async def test_ui_claims_get_no_row(sessions: Sessions) -> None:
+async def test_with_ui_drafting_off_a_ui_claim_gets_no_row(sessions: Sessions) -> None:
     team_id = await team_with_claims(sessions, C1, C2)
     ui = {"claim_id": "c1", "claim_type": "ui_workflow", "status": "draft"}
     transport = Scripted(draft_answer(ui, draft_entry(spec_examples.F07, "c2")))
+    off = SETTINGS.model_copy(update={"draft_ui_tests": False})
 
-    assert await run(sessions, transport, await draft_job(sessions, team_id)) is None
+    assert await run(sessions, transport, await draft_job(sessions, team_id), off) is None
 
     assert [(row.claim_id, row.kind, row.status) for row in await specs(sessions)] == [
         ("c2", "api", "draft")
     ]
+
+
+async def test_a_ui_claim_is_drafted_by_a_second_call_and_stored_as_a_ui_test(
+    sessions: Sessions,
+) -> None:
+    team_id = await team_with_claims(sessions, C1, C2)
+    ui = {"claim_id": "c1", "claim_type": "ui_workflow", "status": "draft"}
+    transport = Scripted(
+        draft_answer(ui, draft_entry(spec_examples.F07, "c2")),
+        ui_answer(ui_entry(spec_examples.F05)),
+    )
+
+    assert await run(sessions, transport, await draft_job(sessions, team_id)) is None
+
+    rows = {row.claim_id: row for row in await specs(sessions)}
+    assert [(c, r.kind, r.claim_type, r.status) for c, r in sorted(rows.items())] == [
+        ("c1", "ui", "ui_workflow", "draft"), ("c2", "api", "calculation", "draft"),
+    ]  # fmt: skip
+    assert rows["c1"].steps[1] == {
+        "id": "type", "action": "fill", "locator": {"label": "New item", "exact": False},
+        "value": "{{case.input.item}}",
+    }  # fmt: skip
+    assert rows["c1"].spec_hash == spec_hash(spec_document(rows["c1"]))
+    tools = [body["tools"][0]["function"]["name"] for body in transport.bodies]
+    assert tools == ["submit_tests", "submit_ui_tests"]
+    assert "<ui_claims>c1</ui_claims>" in transport.user_messages()[1]
 
 
 async def test_model_calls_are_recorded_against_the_job(sessions: Sessions) -> None:

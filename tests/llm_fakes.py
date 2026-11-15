@@ -56,6 +56,21 @@ def draft_answer(*tests: dict[str, Any], finish: str = "tool_calls") -> dict[str
     return tool_reply("submit_tests", {"tests": list(tests)}, finish)
 
 
+def ui_entry(document: dict[str, Any], claim_id: str = "c1") -> dict[str, Any]:
+    """A `submit_ui_tests` entry: an example UI spec as the model would send it."""
+    keys = ("steps", "practice_cases", "final_cases")
+    return {
+        "claim_id": claim_id,
+        "status": "draft",
+        **copy.deepcopy({k: document[k] for k in keys}),
+    }
+
+
+def ui_answer(*tests: dict[str, Any]) -> dict[str, Any]:
+    """A reply calling `submit_ui_tests` with these entries."""
+    return tool_reply("submit_ui_tests", {"tests": list(tests)})
+
+
 def calls_reply(*calls: tuple[str, Any], finish: str = "tool_calls") -> dict[str, Any]:
     """A reply making several tool calls, given as `(name, arguments)`; ids are `call_1`, …"""
     entries = [

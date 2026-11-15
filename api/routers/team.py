@@ -3,24 +3,15 @@
 from fastapi import APIRouter, Request
 from sqlalchemy import select
 
-from api.auth import Session
 from api.deps import Db, TeamUser
 from api.errors import api_error
 from api.schemas import RepoIn, TeamEvent, TeamRepo, TeamView
+from api.team_common import own_team
 from core.db import models
 from core.errors import InfraError
 from core.repo import InvalidRepoUrl, RepoNotFound, RepoProvider
 
 router = APIRouter(prefix="/api", tags=["team"])
-
-
-async def _own(db: Db, session: Session) -> tuple[models.Team, models.Event]:
-    """The signed-in team and its event. No route takes a team ID from the request."""
-    team = await db.get(models.Team, session.subject_id)
-    event = await db.get(models.Event, team.event_id) if team is not None else None
-    if team is None or event is None:
-        raise api_error(401, "not_signed_in", "Sign in to continue.")
-    return team, event
 
 
 def _view(team: models.Team, event: models.Event) -> TeamView:
@@ -46,12 +37,12 @@ def _view(team: models.Team, event: models.Event) -> TeamView:
 
 @router.get("/team")
 async def read_team(session: TeamUser, db: Db) -> TeamView:
-    return _view(*await _own(db, session))
+    return _view(*await own_team(db, session))
 
 
 @router.post("/team/rules-ack")
 async def acknowledge_rules(session: TeamUser, request: Request, db: Db) -> TeamView:
-    team, event = await _own(db, session)
+    team, event = await own_team(db, session)
     if team.rules_acknowledged_at is None:
         team.rules_acknowledged_at = request.app.state.clock.now()
         await db.commit()
@@ -67,7 +58,7 @@ async def register_repo(body: RepoIn, session: TeamUser, request: Request, db: D
     """
     state = request.app.state
     provider: RepoProvider = state.repo_provider
-    team, event = await _own(db, session)
+    team, event = await own_team(db, session)
     now = state.clock.now()
     if team.rules_acknowledged_at is None:
         raise api_error(409, "rules_not_acknowledged", "Acknowledge the event rules first.")

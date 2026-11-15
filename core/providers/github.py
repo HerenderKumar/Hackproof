@@ -3,7 +3,7 @@
 import re
 import tempfile
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 import httpx
 
@@ -81,6 +81,20 @@ class GitHubProvider:
             created_at=data["created_at"],
             is_public=not data["private"],
         )
+
+    async def head(self, repo: RepoInfo) -> str | None:
+        """The default branch's commit. GitHub answers 404 for a branch with no commit yet."""
+        owner, name = parse_repo_url(repo.url)
+        branch = quote(repo.default_branch, safe="")
+        try:
+            data = await self._get(f"/repos/{owner}/{name}/branches/{branch}")
+        except RepoNotFound:
+            return None
+        commit = data.get("commit")
+        sha = commit.get("sha") if isinstance(commit, dict) else None
+        if not isinstance(sha, str):
+            raise InfraError("GitHub answered a branch without a commit SHA")
+        return sha
 
     async def snapshot(self, repo: RepoInfo, sha: str, archives_dir: Path) -> SnapshotFiles:
         """Clone without file contents, fetch the commit by SHA, check it out, archive it.

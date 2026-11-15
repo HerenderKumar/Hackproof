@@ -151,6 +151,38 @@ async def test_github_403_without_rate_limit_headers_is_treated_as_not_found() -
         await github(responding(403)).describe("https://github.com/acme/rocket")
 
 
+ROCKET = RepoInfo(
+    provider="github",
+    id="4242",
+    url="https://github.com/acme/Rocket",
+    default_branch="trunk",
+    created_at=None,
+    is_public=True,
+)
+
+
+async def test_github_head_is_the_default_branchs_commit() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.url.path)
+        return httpx.Response(200, json={"name": "trunk", "commit": {"sha": "c" * 40}})
+
+    head = await github(httpx.MockTransport(handler)).head(ROCKET)
+
+    assert head == "c" * 40
+    assert seen == ["/repos/acme/Rocket/branches/trunk"]
+
+
+async def test_github_head_of_a_branch_with_no_commit_is_none() -> None:
+    assert await github(responding(404)).head(ROCKET) is None
+
+
+async def test_github_head_outage_is_an_infrastructure_error() -> None:
+    with pytest.raises(InfraError):
+        await github(responding(500)).head(ROCKET)
+
+
 # --- local bare repos ------------------------------------------------------------------------
 
 
@@ -224,6 +256,29 @@ async def test_local_refuses_names_that_could_leave_the_remotes_directory(
 ) -> None:
     with pytest.raises(InvalidRepoUrl):
         await LocalGitProvider(remotes, FakeClock(NOW)).describe(url)
+
+
+def last_commit(git_dir: Path, branch: str) -> str:
+    done = subprocess.run(
+        ["git", "--git-dir", str(git_dir), "log", "-1", "--format=%H", branch],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return done.stdout.strip()
+
+
+async def test_local_head_is_the_default_branchs_last_commit(remotes: Path) -> None:
+    provider = LocalGitProvider(remotes, FakeClock(NOW))
+    info = await provider.describe("local://demo")
+
+    assert await provider.head(info) == last_commit(remotes / "demo.git", "trunk")
+
+
+async def test_local_head_of_an_empty_repository_is_none(remotes: Path) -> None:
+    provider = LocalGitProvider(remotes, FakeClock(NOW))
+
+    assert await provider.head(await provider.describe("local://empty")) is None
 
 
 # --- choosing a provider ---------------------------------------------------------------------

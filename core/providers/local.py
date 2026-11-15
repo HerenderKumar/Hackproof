@@ -53,6 +53,16 @@ class LocalGitProvider:
             is_public=True,
         )
 
+    async def head(self, repo: RepoInfo) -> str | None:
+        name, path = self._path(repo.url)
+        if not path.is_dir():
+            raise RepoNotFound(f"no local repository named {name}")
+        sha = await run_git(
+            "rev-parse", "--verify", "--quiet", f"{repo.default_branch}^{{commit}}",
+            git_dir=path, check=False,
+        )  # fmt: skip
+        return sha or None
+
     async def snapshot(self, repo: RepoInfo, sha: str, archives_dir: Path) -> SnapshotFiles:
         name, path = self._path(repo.url)
         if not path.is_dir():

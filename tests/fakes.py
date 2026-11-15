@@ -199,6 +199,8 @@ class FakeRepoProvider:
     def __init__(self) -> None:
         self.repos: dict[str, RepoInfo | Exception] = {}
         self.calls: list[str] = []
+        # Each repository's default-branch head by URL: a SHA, None (no commit), or an error.
+        self.heads: dict[str, str | Exception | None] = {}
 
     def add(self, url: str, /, **overrides: object) -> RepoInfo:
         values: dict[str, object] = {
@@ -221,6 +223,12 @@ class FakeRepoProvider:
         found = self.repos.get(repo_url.strip())
         if found is None:
             raise RepoNotFound(repo_url)
+        if isinstance(found, Exception):
+            raise found
+        return found
+
+    async def head(self, repo: RepoInfo) -> str | None:
+        found = self.heads.get(repo.url)
         if isinstance(found, Exception):
             raise found
         return found

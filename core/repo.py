@@ -1,7 +1,7 @@
 """The repository boundary (section 13.1, D-006).
 
 All access to a team's repository goes through `RepoProvider`. This file holds the part
-registration needs; `head`, `compare` and `snapshot` join it with the milestones that use them.
+registration needs, `head` (M7) and `snapshot`; `compare` joins it with the milestone that uses it.
 """
 
 from datetime import datetime
@@ -65,6 +65,13 @@ class RepoProvider(Protocol):
 
         Raises `InvalidRepoUrl`, `RepoNotFound`, or `InfraError` when the provider cannot
         be reached or is rate-limiting us.
+        """
+        ...
+
+    async def head(self, repo: RepoInfo) -> str | None:
+        """The SHA of the default branch's last commit, or None when the branch has none yet.
+
+        Raises `InfraError` when the provider cannot be reached.
         """
         ...
 

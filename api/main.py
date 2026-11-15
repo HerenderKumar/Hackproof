@@ -7,7 +7,7 @@ from fastapi import FastAPI
 
 from api.auth import SessionCodec
 from api.middleware import RequestIdMiddleware
-from api.routers import auth, events, health, team, team_claims, team_tests
+from api.routers import auth, events, health, team, team_claims, team_snapshots, team_tests
 from core.clock import Clock, SystemClock
 from core.db.engine import make_engine, make_sessions
 from core.logging import configure_logging
@@ -61,4 +61,5 @@ def create_app(
     app.include_router(team.router)
     app.include_router(team_claims.router)
     app.include_router(team_tests.router)
+    app.include_router(team_snapshots.router)
     return app

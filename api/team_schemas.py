@@ -88,3 +88,35 @@ class TestsView(BaseModel):
 
 class ApproveIn(Strict):
     spec_hash: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+
+
+# --- snapshots -------------------------------------------------------------------------------
+
+
+class SnapshotIn(Strict):
+    commit_sha: Annotated[str, StringConstraints(strip_whitespace=True, to_lower=True)] | None = (
+        None  # left out: the default branch's head, now
+    )
+
+
+class SnapshotOut(BaseModel):
+    id: uuid.UUID
+    commit_sha: str
+    created_at: datetime
+
+
+class PendingCommit(BaseModel):
+    commit_sha: str
+    status: Literal["queued", "running", "refused", "failed"]
+    detail: str | None
+
+
+class SnapshotRequest(BaseModel):
+    commit_sha: str
+    status: Literal["ready", "queued", "running"]
+    snapshot_id: uuid.UUID | None
+
+
+class SnapshotsView(BaseModel):
+    snapshots: list[SnapshotOut]
+    pending: list[PendingCommit]

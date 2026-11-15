@@ -22,10 +22,11 @@ import httpx
 from sqlalchemy import func, select, update
 
 from core.db import models
+from core.repo import RepoInfo
 from scripts.fixtures import FIXTURES_DIR
 from tests import spec_examples
 from tests.api_helpers import Api, make_app
-from tests.factories import make_test_spec
+from tests.factories import make_snapshot, make_test_spec
 from tests.fakes import FakeClock, FakeRepoProvider
 from tests.helpers import Sessions
 
@@ -198,3 +199,27 @@ async def approve_all(flow: Flow) -> None:
                 f"/api/team/tests/{test['id']}/approve", json={"spec_hash": test["spec_hash"]}
             )
             assert response.status_code == 200, response.text
+
+
+REPO_URL = "https://github.com/acme/rocket"
+
+
+async def with_repo(
+    flow: Flow, repos: FakeRepoProvider, head: str | Exception | None = "a" * 40
+) -> RepoInfo:
+    """Register the team's repository through the API, with `head` as its default branch's."""
+    info = repos.add(REPO_URL)
+    repos.heads[info.url] = head
+    response = await flow.client.post("/api/team/repo", json={"repo_url": REPO_URL})
+    assert response.status_code == 200, response.text
+    return info
+
+
+async def snapshot(sessions: Sessions, flow: Flow, **overrides: Any) -> models.Snapshot:
+    """A snapshot of the team's repository, as the prepare job stores it."""
+    async with sessions.begin() as session:
+        row = make_snapshot(flow.team_id, **overrides)
+        session.add(row)
+        await session.flush()
+        await session.refresh(row)
+    return row

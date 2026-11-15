@@ -27,6 +27,20 @@ def test_successful_calls_are_counted_with_their_tokens_cost_and_models() -> Non
     assert use["cost_usd"] == 0.0006 and use["optimised"] is False
 
 
+def test_prune_s_no_op_steps_and_its_false_header_are_not_optimisation() -> None:
+    # As the real Prune logs a call it changed nothing in (seen live, 2026-11-15).
+    seen = {**OK, "route_applied": "false", "prune_optimizations_applied": [
+        "template_hoist_skip:no_recurring_prefix", "token_budget_analyze",
+        "output_cap:not_tightened", "prefix_broker_skip:no_stable_prefix"]}  # fmt: skip
+    assert summarise([seen])["optimised"] is False
+    assert summarise([{**seen, "route_applied": "true"}])["optimised"] is True
+    assert (
+        summarise([{**OK, "prune_optimizations_applied": ["output_cap:tightened"]}])["optimised"]
+        is True
+    )
+    assert summarise([{**OK, "prune_cache_hit": True}])["optimised"] is True
+
+
 def test_no_calls_is_not_a_failure() -> None:
     use = summarise([])
     assert (use["calls"], use["refused"], use["outside"]["connections"]) == (0, [], 0)

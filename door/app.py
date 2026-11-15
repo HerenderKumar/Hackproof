@@ -199,7 +199,15 @@ class Door:
                 )
             content = await reply.aread()
             await reply.aclose()
-        self.log(route=route, model=model, status=reply.status_code, **_summary(reply, content))
+        reshaped: dict[str, str] = {}
+        if route == "/v1/chat/completions" and reply.status_code == 200:
+            openai = _openai_from_gemini(content)
+            if openai is not None:
+                content, reshaped = openai, {"reshaped": "gemini"}
+        self.log(
+            route=route, model=model, status=reply.status_code,
+            **_summary(reply, content), **reshaped,
+        )  # fmt: skip
         headers = {k: v for k, v in reply.headers.items() if k.lower().startswith("x-prune-")}
         return Response(
             content,
@@ -227,6 +235,81 @@ class Door:
             "and GET /v1/models.",
             "route",
         )
+
+
+# Gemini's finish reasons in OpenAI's words; anything else is a plain stop.
+_FINISH = {
+    "STOP": "stop",
+    "MAX_TOKENS": "length",
+    **dict.fromkeys(
+        ("SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"),
+        "content_filter",
+    ),
+}
+
+
+def _openai_from_gemini(content: bytes) -> bytes | None:
+    """Prune answers a Gemini model on /v1/chat/completions with Gemini's own body (seen live,
+    2026-11-15), which a stock OpenAI SDK cannot read. The door promises the OpenAI shape on that
+    route, so it rewrites such a body: text parts joined (thought parts left out), function calls
+    as tool calls, the finish reason and usage in OpenAI's words, `prune_metadata` kept. Any
+    other body is not Gemini's and is returned as None, to be passed on as it came."""
+    try:
+        data = json.loads(content)
+    except ValueError:
+        return None
+    if (
+        not isinstance(data, dict)
+        or "choices" in data
+        or not isinstance(data.get("candidates"), list)
+    ):
+        return None
+    choices = []
+    for index, candidate in enumerate(data["candidates"]):
+        candidate = candidate if isinstance(candidate, dict) else {}
+        parts = (candidate.get("content") or {}).get("parts") or []
+        texts: list[str] = []
+        calls: list[dict[str, Any]] = []
+        for part in parts:
+            if not isinstance(part, dict) or part.get("thought"):
+                continue
+            if isinstance(part.get("text"), str):
+                texts.append(part["text"])
+            call = part.get("functionCall")
+            if isinstance(call, dict):
+                calls.append({
+                    "id": f"call_{data.get('responseId', 'door')}_{index}_{len(calls)}",
+                    "type": "function",
+                    "function": {"name": call.get("name", ""),
+                                 "arguments": json.dumps(call.get("args") or {})},
+                })  # fmt: skip
+        message: dict[str, Any] = {"role": "assistant", "content": "".join(texts) or None}
+        finish = _FINISH.get(str(candidate.get("finishReason", "STOP")), "stop")
+        if calls:
+            message["tool_calls"], finish = calls, "tool_calls"
+        choices.append(
+            {"index": candidate.get("index", index), "message": message, "finish_reason": finish}
+        )
+    meta = data.get("usageMetadata") or {}
+    prompt = int(meta.get("promptTokenCount") or 0)
+    completion = int(meta.get("candidatesTokenCount") or 0) + int(
+        meta.get("thoughtsTokenCount") or 0
+    )
+    out: dict[str, Any] = {
+        "id": f"chatcmpl-{data.get('responseId', 'door')}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": data.get("modelVersion", ""),
+        "choices": choices,
+        "usage": {
+            "prompt_tokens": prompt,
+            "completion_tokens": completion,
+            "total_tokens": int(meta.get("totalTokenCount") or prompt + completion),
+        },
+    }
+    if "prune_metadata" in data:
+        out["prune_metadata"] = data["prune_metadata"]
+    return json.dumps(out).encode()
 
 
 def _summary(reply: httpx.Response, content: bytes) -> dict[str, Any]:

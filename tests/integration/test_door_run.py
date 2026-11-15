@@ -7,6 +7,7 @@ whose budget is zero is refused by Prune, as the team would see it.
 """
 
 import dataclasses
+import json
 import os
 import shutil
 import uuid
@@ -141,7 +142,8 @@ async def test_live_a_run_through_the_real_prune_is_receipted_and_its_budget_hol
     key = os.environ["PRUNE_API_KEY"]
     live = terms(prune_base_url="https://api.withprune.com", prune_api_key=key)
     outcome, door = await run_app(dk, dk.runtime, "real", live)
-    assert outcome.startup_status == "ok", outcome.app_log_path.read_text()[-1500:]
+    app_log = outcome.app_log_path.read_text()[-600:]
+    assert outcome.startup_status == "ok", json.dumps([outcome.door_log, app_log])
     async with PruneClient(live.prune_base_url, key) as prune:
         use = await with_receipt(summarise(outcome.door_log or ()), prune, door.run_id)
     assert use["calls"] >= 1 and use["receipt_verified"] is True, use

@@ -87,6 +87,14 @@ def _whose(line: dict[str, Any]) -> tuple[str, str] | None:
     return "team", f"the model service refused a call ({status})"
 
 
+def _changed(step: object) -> bool:
+    """Whether one of Prune's `optimizations_applied` entries changed the call. Prune also lists
+    the steps it only looked at, as `<name>_skip:<why>`, `<name>_analyze` or `<name>:not_<what>`
+    (seen live, 2026-11-15); those changed nothing."""
+    text = str(step)
+    return not ("_skip" in text or text.endswith("_analyze") or ":not_" in text)
+
+
 def summarise(lines: Sequence[dict[str, Any]]) -> dict[str, Any]:
     """The run's model use from the door's log. Raises `InfraError` if a failure was ours."""
     calls = [line for line in lines if "egress" not in line]
@@ -105,8 +113,8 @@ def summarise(lines: Sequence[dict[str, Any]]) -> dict[str, Any]:
     cost = sum(float(c.get("prune_cost_with_prune_usd") or 0) for c in ok)
     optimised = any(
         c.get("prune_cache_hit") is True
-        or c.get("prune_optimizations_applied")
-        or c.get("route_applied")
+        or any(_changed(step) for step in c.get("prune_optimizations_applied") or ())
+        or str(c.get("route_applied", "")).lower() == "true"  # a header: "true" or "false"
         for c in ok
     )
     return {

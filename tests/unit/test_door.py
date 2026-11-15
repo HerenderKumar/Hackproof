@@ -226,6 +226,89 @@ async def test_the_log_holds_what_was_used_and_never_the_text(tmp_path: Path) ->
     assert SECRET_PROMPT not in text and SECRET_REPLY not in text
 
 
+def gemini_prune(candidate: dict[str, Any], status: int = 200) -> Any:
+    """Prune as it answers a Gemini model on /v1/chat/completions: Gemini's own body."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        reply = {
+            "candidates": [candidate],
+            "usageMetadata": {"promptTokenCount": 38, "candidatesTokenCount": 2,
+                              "thoughtsTokenCount": 5, "totalTokenCount": 45},
+            "modelVersion": "gemini-3.5-flash-lite",
+            "responseId": "abc123",
+            "prune_metadata": {"cost_with_prune_usd": 1e-06, "cache_hit": False},
+        }  # fmt: skip
+        return httpx.Response(status, json=reply, headers={"x-prune-provider": "gemini"})
+
+    return answer
+
+
+GEMINI = "gemini/gemini-3.5-flash-lite"
+
+
+async def test_a_gemini_reply_reaches_the_app_in_the_openai_shape(tmp_path: Path) -> None:
+    candidate = {
+        "content": {"role": "model", "parts": [
+            {"text": "thinking...", "thought": True},
+            {"text": SECRET_REPLY[:10], "thoughtSignature": "sig"},
+            {"text": SECRET_REPLY[10:]},
+        ]},
+        "finishReason": "MAX_TOKENS",
+        "index": 0,
+    }  # fmt: skip
+    async with await client(tmp_path, gemini_prune(candidate), models=(GEMINI,)) as c:
+        r = await c.post("/v1/chat/completions", json=chat(GEMINI), headers=AUTH)
+    body = r.json()
+    assert r.status_code == 200 and "candidates" not in body
+    assert body["object"] == "chat.completion" and body["model"] == "gemini-3.5-flash-lite"
+    (choice,) = body["choices"]
+    assert choice["message"] == {"role": "assistant", "content": SECRET_REPLY}
+    assert choice["finish_reason"] == "length" and choice["index"] == 0
+    assert body["usage"] == {"prompt_tokens": 38, "completion_tokens": 7, "total_tokens": 45}
+    assert body["prune_metadata"]["cost_with_prune_usd"] == 1e-06
+    assert r.headers["x-prune-provider"] == "gemini"
+    (line,) = log(tmp_path)
+    assert (line["prompt_tokens"], line["completion_tokens"], line["reshaped"]) == (38, 7, "gemini")
+    assert SECRET_REPLY not in (tmp_path / "log.jsonl").read_text()
+
+
+async def test_a_gemini_function_call_becomes_an_openai_tool_call(tmp_path: Path) -> None:
+    candidate = {
+        "content": {"role": "model", "parts": [
+            {"functionCall": {"name": "lookup", "args": {"city": "Pune"}}},
+        ]},
+        "finishReason": "STOP",
+    }  # fmt: skip
+    async with await client(tmp_path, gemini_prune(candidate), models=(GEMINI,)) as c:
+        r = await c.post("/v1/chat/completions", json=chat(GEMINI), headers=AUTH)
+    (choice,) = r.json()["choices"]
+    assert choice["finish_reason"] == "tool_calls" and choice["message"]["content"] is None
+    (call,) = choice["message"]["tool_calls"]
+    assert call["type"] == "function" and call["id"].startswith("call_")
+    assert call["function"] == {"name": "lookup", "arguments": '{"city": "Pune"}'}
+
+
+async def test_a_blocked_gemini_reply_is_a_content_filter_finish(tmp_path: Path) -> None:
+    candidate = {"finishReason": "SAFETY"}
+    async with await client(tmp_path, gemini_prune(candidate), models=(GEMINI,)) as c:
+        r = await c.post("/v1/chat/completions", json=chat(GEMINI), headers=AUTH)
+    (choice,) = r.json()["choices"]
+    assert choice["finish_reason"] == "content_filter" and choice["message"]["content"] is None
+
+
+async def test_an_openai_shaped_or_failed_reply_is_passed_as_it_came(
+    tmp_path: Path, prune: FakePrune
+) -> None:
+    candidate = {"content": {"parts": [{"text": "x"}]}, "finishReason": "STOP"}
+    async with await client(tmp_path, prune) as c:
+        ok = await c.post("/v1/chat/completions", json=chat(), headers=AUTH)
+    async with await client(tmp_path, gemini_prune(candidate, 500), models=(GEMINI,)) as c:
+        failed = await c.post("/v1/chat/completions", json=chat(GEMINI), headers=AUTH)
+    assert ok.json()["choices"][0]["message"]["content"] == SECRET_REPLY
+    assert "candidates" in failed.json() and failed.status_code == 500
+    assert all("reshaped" not in line for line in log(tmp_path))
+
+
 async def test_prune_out_of_reach_is_a_502_the_worker_can_tell_apart(tmp_path: Path) -> None:
     def down(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route", request=request)

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from core import queue
 from core.db import models
+from core.errors import InfraError
 from core.settings import Settings
 from core.specs import test_spec_hash
 from tests.factories import (
@@ -87,6 +88,7 @@ class FakeRun:
     error: Exception | None = None
     tests: list[dict[str, Any]] = field(default_factory=list)
     calls: list[dict[str, Any]] = field(default_factory=list)
+    door_log: tuple[dict[str, Any], ...] | None = None  # what the door logged, when it is on
 
     async def __call__(self, runtime: object, **kwargs: Any) -> RunOutcome:
         self.calls.append(kwargs)
@@ -106,6 +108,7 @@ class FakeRun:
             results={"runner_version": "1", "startup": {}, "tests": self.tests} if ok else None,
             app_log_path=kwargs["app_log_path"],
             timed_out=False,
+            door_log=self.door_log if kwargs.get("door") is not None else None,
         )
 
 
@@ -499,3 +502,86 @@ async def test_a_build_failure_blocks_the_tests_it_would_have_run(
 
     (row,) = await test_results(sessions)
     assert (row.spec_id, row.case_id, row.verdict) == (s.spec_id, None, "blocked")
+
+
+# --- the model door (Prune design, B3) ---------------------------------------------------------
+
+DOOR_OK = {"route": "/v1/chat/completions", "model": "gpt-4.1-nano", "status": 200,
+           "prompt_tokens": 5, "completion_tokens": 2}  # fmt: skip
+
+
+class FakePrune:
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    async def __aenter__(self) -> "FakePrune":
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        return None
+
+    async def run_receipt(self, run_id: str) -> dict[str, Any]:
+        self.asked.append(run_id)
+        return {"run_id": run_id, "steps": [{"n": 1}], "receipt_signature": "s"}
+
+    async def verify(self, receipt: dict[str, Any]) -> bool:
+        return True
+
+
+def door_handler(sessions: Sessions, tmp_path: Path, run: FakeRun, prune: FakePrune):  # type: ignore[no-untyped-def]
+    settings = Settings(host_artifact_dir=tmp_path, model_door="prune", prune_api_key="prune_k")
+    return make_run_handler(
+        sessions, FakeRuntime(), settings, FakeClock(T0), build=FakeBuild(), run=run,
+        prune=lambda: prune,  # type: ignore[arg-type,return-value]
+    )  # fmt: skip
+
+
+async def final_job(sessions: Sessions, tmp_path: Path) -> queue.Job:
+    archive, digest = make_archive(tmp_path / "archives", {"server.js": ""})
+    s = await scene(sessions, archive, digest)
+    return await claim(
+        sessions, "final_run", f"final_run:{s.submission_id}",
+        team_id=s.team_id, submission_id=s.submission_id,
+    )  # fmt: skip
+
+
+async def test_a_run_with_the_door_records_its_model_use_and_receipt(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    job = await final_job(sessions, tmp_path)
+    run, prune = FakeRun(door_log=(DOOR_OK, DOOR_OK)), FakePrune()
+
+    assert await door_handler(sessions, tmp_path, run, prune)(job) is None
+
+    (ran,) = run.calls
+    door = ran["door"]
+    assert (door.feature, door.run_id, door.terms.prune_api_key) == (
+        "final_run",
+        str(job.attempt_id),
+        "prune_k",
+    )
+    (row,) = await run_results(sessions)
+    assert row.model_use["calls"] == 2 and row.model_use["tokens"]["prompt_tokens"] == 10
+    assert row.model_use["receipt_verified"] is True and prune.asked == [str(job.attempt_id)]
+
+
+async def test_a_failure_of_ours_through_the_door_records_nothing_and_is_retried(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    job = await final_job(sessions, tmp_path)
+    run = FakeRun(door_log=(DOOR_OK, {**DOOR_OK, "status": 502, "unreachable": "ConnectError"}))
+
+    with pytest.raises(InfraError, match="Prune could not be reached"):
+        await door_handler(sessions, tmp_path, run, FakePrune())(job)
+    assert await run_results(sessions) == []
+
+
+async def test_with_the_door_off_no_door_is_made_and_nothing_is_stored(
+    sessions: Sessions, tmp_path: Path
+) -> None:
+    job = await final_job(sessions, tmp_path)
+    run = FakeRun(door_log=(DOOR_OK,))
+    await handler(sessions, tmp_path, FakeBuild(), run, FakeClock(T0))(job)
+    assert "door" not in run.calls[0]
+    (row,) = await run_results(sessions)
+    assert row.model_use is None

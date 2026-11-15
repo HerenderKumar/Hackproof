@@ -239,6 +239,9 @@ class RunResult(Base):
     image_digest: Mapped[str | None]
     build_config: Mapped[Any] = _json_or_null()
     flags_used: Mapped[Any] = _json(default="{}")
+    # With the model door on (Prune design, B3): calls, refusals, models, tokens, cost, outside
+    # connections and the run's receipt. NULL when the door was off.
+    model_use: Mapped[Any] = _json_or_null()
     build_log_path: Mapped[str | None]
     app_log_path: Mapped[str | None]
     started_at: Mapped[datetime]

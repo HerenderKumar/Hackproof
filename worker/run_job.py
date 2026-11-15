@@ -32,11 +32,13 @@ from core.clock import Clock
 from core.db import models
 from core.db.engine import Sessions
 from core.logging import get_logger
+from core.prune import PruneClient
 from core.settings import Settings
 from core.snapshots import extract_archive
 from worker.build import BuildResult, build_image
 from worker.door import DoorRun, DoorTerms
 from worker.lanes import Handler, Outcome
+from worker.model_use import summarise, with_receipt
 from worker.results import result_rows
 from worker.run_specs import RunPlan, final_run_plan, self_check_plan
 from worker.runtime import ContainerRuntime
@@ -132,9 +134,15 @@ def make_run_handler(
     *,
     build: Build = build_image,
     run: Run = run_sandboxed,
+    prune: Callable[[], PruneClient] | None = None,
 ) -> Handler:
     limits = SandboxLimits.from_settings(settings)
     door_terms = DoorTerms.from_settings(settings)
+    if prune is None and door_terms is not None:
+        terms = door_terms
+
+        def prune() -> PruneClient:
+            return PruneClient(terms.prune_base_url, terms.prune_api_key)
 
     async def run_job(job: queue.Job) -> Outcome | None:
         found = await _load(sessions, job)
@@ -160,7 +168,14 @@ def make_run_handler(
             run=run,
             door_terms=door_terms,
         )
-        await _record(sessions, job, report, plan, started_at, clock.now())
+        model_use = None
+        if report.run is not None and report.run.door_log is not None and prune is not None:
+            # A failure of ours (Prune down, our key or plan) raises here: the run is retried
+            # and nothing is recorded from it.
+            use = summarise(report.run.door_log)
+            async with prune() as client:
+                model_use = await with_receipt(use, client, str(job.attempt_id))
+        await _record(sessions, job, report, plan, started_at, clock.now(), model_use)
         return None
 
     return run_job
@@ -209,6 +224,7 @@ async def _record(
     plan: RunPlan,
     started_at: datetime,
     finished_at: datetime,
+    model_use: dict[str, Any] | None = None,
 ) -> None:
     """Write `run_results` and its `test_results` together, at most once per attempt."""
 
@@ -235,6 +251,7 @@ async def _record(
                 image_digest=built.image_digest,
                 build_config=built.build_config,
                 flags_used=flags_used,
+                model_use=model_use,
                 build_log_path=str(built.log_path),
                 app_log_path=str(ran.app_log_path) if ran else None,
                 started_at=started_at,
@@ -257,4 +274,5 @@ async def _record(
         port=flags_used.get("port"),
         tests=len(rows),
         verdicts=sorted({row["verdict"] for row in rows}),
+        model_calls=model_use["calls"] if model_use else None,
     )

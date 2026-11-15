@@ -255,6 +255,9 @@ def _summary(reply: httpx.Response, content: bytes) -> dict[str, Any]:
     error = data.get("error")
     if isinstance(error, dict) and isinstance(error.get("code"), str):
         out["error_code"] = error["code"]
+        # Prune's own setup problem (no provider key in its vault) is ours, not the team's.
+        if "vault" in str(error.get("message", "")).lower():
+            out["error_code"] = "missing_provider_key"
     return out
 
 

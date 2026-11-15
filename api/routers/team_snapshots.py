@@ -1,13 +1,20 @@
-"""A team's snapshots: one commit of its repository, archived (M7 design, part 4).
+"""A team's snapshots and their self-checks (M7 design, parts 4 and 5).
 
 A team picks its default branch's head or pastes a full SHA. The API only asks: the worker's
 `prepare_snapshot` job archives the commit, or refuses it with a reason the team can read.
+
+A self-check runs a snapshot against the practice cases of the team's tests. Its routes answer
+for `self_check_run` jobs only: a final run's results and logs never reach a team, since the
+app may have logged the hidden inputs it was sent.
 """
 
+import asyncio
 import uuid
+from pathlib import Path
 from typing import Literal, cast
 
 from fastapi import APIRouter, Request, Response
+from fastapi.responses import PlainTextResponse
 from sqlalchemy import select
 
 from api.deps import Db, TeamUser
@@ -15,6 +22,11 @@ from api.errors import api_error
 from api.team_common import own_team, require_before_deadline
 from api.team_schemas import (
     PendingCommit,
+    ResultOut,
+    RunOut,
+    SelfCheckIn,
+    SelfCheckStart,
+    SelfCheckView,
     SnapshotIn,
     SnapshotOut,
     SnapshotRequest,
@@ -24,7 +36,9 @@ from core import queue
 from core.db import models
 from core.errors import InfraError
 from core.repo import InvalidCommit, ProviderName, RepoInfo, RepoNotFound, RepoProvider
+from core.results import current_test_results
 from core.snapshots import check_commit_sha
+from core.verdicts import Verdict, claim_verdicts
 
 router = APIRouter(prefix="/api", tags=["team"])
 
@@ -159,3 +173,151 @@ async def request_snapshot(
         f"This commit cannot be snapshotted: {job.error_detail or 'the snapshot failed'}.",
         commit_sha=sha,
     )
+
+
+# --- self-checks -----------------------------------------------------------------------------
+
+LOG_LINES = 200
+LOG_TAIL_BYTES = 64 * 1024
+
+
+@router.post("/team/snapshots/{snapshot_id}/self-check", status_code=202)
+async def start_self_check(
+    snapshot_id: uuid.UUID, body: SelfCheckIn, session: TeamUser, request: Request, db: Db
+) -> SelfCheckStart:
+    """Run a snapshot against the practice cases. One at a time per team."""
+    team, event = await own_team(db, session)
+    require_before_deadline(event, request.app.state.clock.now())
+    snapshot = await db.get(models.Snapshot, snapshot_id)
+    if snapshot is None or snapshot.team_id != team.id:
+        raise api_error(404, "snapshot_not_found", "No such snapshot.")
+
+    key = queue.self_check_key(snapshot.id, body.client_request_id)
+    # Two clicks at once queue up here, so the second sees the first's job.
+    await db.execute(select(models.Team.id).where(models.Team.id == team.id).with_for_update())
+    same = await db.scalar(select(models.Job).where(models.Job.idempotency_key == key))
+    if same is not None:
+        return SelfCheckStart(job_id=same.id, status=same.status)
+    busy = await db.scalar(
+        select(models.Job.id)
+        .where(
+            models.Job.team_id == team.id,
+            models.Job.kind == "self_check_run",
+            models.Job.status.in_(("queued", "running")),
+        )
+        .limit(1)
+    )
+    if busy is not None:
+        raise api_error(
+            409,
+            "self_check_in_progress",
+            "A self-check is already running: wait for it to finish.",
+            job_id=str(busy),
+        )
+    job_id, _ = await queue.enqueue(
+        db, "self_check_run", key, team_id=team.id, snapshot_id=snapshot.id
+    )
+    await db.commit()
+    return SelfCheckStart(job_id=job_id, status="queued")
+
+
+async def _own_self_check(db: Db, team_id: uuid.UUID, job_id: uuid.UUID) -> models.Job:
+    job = await db.get(models.Job, job_id)
+    if job is None or job.kind != "self_check_run" or job.team_id != team_id:
+        raise api_error(404, "self_check_not_found", "No such self-check.")
+    return job
+
+
+async def _run(db: Db, job: models.Job) -> models.RunResult | None:
+    """The run of the job's current attempt, once the job is done."""
+    if job.status != "done" or job.attempt_id is None:
+        return None
+    found: models.RunResult | None = await db.scalar(
+        select(models.RunResult).where(
+            models.RunResult.job_id == job.id, models.RunResult.attempt_id == job.attempt_id
+        )
+    )
+    return found
+
+
+@router.get("/team/self-checks/{job_id}")
+async def read_self_check(job_id: uuid.UUID, session: TeamUser, db: Db) -> SelfCheckView:
+    team, _ = await own_team(db, session)
+    job = await _own_self_check(db, team.id, job_id)
+    snapshot = await db.get(models.Snapshot, job.snapshot_id) if job.snapshot_id else None
+    run = await _run(db, job)
+    rows = await current_test_results(db, job.id)
+    claim_of: dict[uuid.UUID, str] = {}
+    if rows:
+        found = await db.execute(
+            select(models.TestSpec.id, models.TestSpec.claim_id).where(
+                models.TestSpec.id.in_({row.spec_id for row in rows})
+            )
+        )
+        claim_of = {spec_id: claim_id for spec_id, claim_id in found if claim_id}
+    results = sorted(
+        (
+            ResultOut(
+                claim_id=claim_of[row.spec_id],
+                case_id=row.case_id,
+                verdict=row.verdict,
+                assertion_results=row.assertion_results,
+                error=row.error,
+                duration_ms=row.duration_ms,
+            )
+            for row in rows
+            if row.spec_id in claim_of
+        ),
+        key=lambda result: (result.claim_id, result.case_id or ""),
+    )
+    claim_ids = list(dict.fromkeys(result.claim_id for result in results))
+    pairs = [(result.claim_id, cast(Verdict, result.verdict)) for result in results]
+    failed = job.status in ("failed", "cancelled") or job.error_class is not None
+    return SelfCheckView(
+        job_id=job.id,
+        snapshot_id=job.snapshot_id,
+        commit_sha=snapshot.commit_sha if snapshot else None,
+        status=job.status,
+        error=job.error_detail if failed else None,
+        run=None
+        if run is None
+        else RunOut(
+            build_status=run.build_status,
+            startup_status=run.startup_status,
+            startup_detail=run.startup_detail,
+        ),
+        results=results,
+        claim_verdicts=dict(claim_verdicts(claim_ids, pairs)),
+    )
+
+
+def _tail(root: Path, stored: str) -> str | None:
+    """The last LOG_LINES lines within the last LOG_TAIL_BYTES of a log, or None when the log
+    is missing or lies outside the artifact directory."""
+    path = Path(stored).resolve()
+    if not path.is_relative_to(root.resolve()) or not path.is_file():
+        return None
+    with path.open("rb") as log:
+        size = log.seek(0, 2)
+        log.seek(max(size - LOG_TAIL_BYTES, 0))
+        data = log.read(LOG_TAIL_BYTES)
+    lines = data.decode(errors="replace").splitlines()
+    if size > LOG_TAIL_BYTES:
+        lines = lines[1:]  # cut mid-line
+    return "".join(f"{line}\n" for line in lines[-LOG_LINES:])
+
+
+@router.get("/team/self-checks/{job_id}/logs/{kind}", response_class=PlainTextResponse)
+async def read_self_check_log(
+    job_id: uuid.UUID, kind: str, session: TeamUser, request: Request, db: Db
+) -> PlainTextResponse:
+    """The end of a self-check's build or app log, as text."""
+    team, _ = await own_team(db, session)
+    job = await _own_self_check(db, team.id, job_id)
+    run = await _run(db, job)
+    stored = {"build": run.build_log_path, "app": run.app_log_path}.get(kind) if run else None
+    root: Path = request.app.state.settings.artifact_dir
+    text = await asyncio.to_thread(_tail, root, stored) if stored else None
+    if text is None:
+        raise api_error(404, "log_not_found", "That log is not available.")
+    return PlainTextResponse(text)

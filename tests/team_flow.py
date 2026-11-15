@@ -11,7 +11,7 @@ claims lock rather than moving the clock past the session's end.
 
 import json
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 
 from core.db import models
 from core.repo import RepoInfo
@@ -223,3 +223,67 @@ async def snapshot(sessions: Sessions, flow: Flow, **overrides: Any) -> models.S
         await session.flush()
         await session.refresh(row)
     return row
+
+
+async def finished_self_check(
+    sessions: Sessions,
+    job_id: uuid.UUID,
+    *,
+    results: Sequence[tuple[models.TestSpec, str, str]] = (),
+    build: str = "ok",
+    startup: str = "ok",
+    startup_detail: str | None = None,
+    logs: dict[str, Path] | None = None,
+) -> None:
+    """What the worker leaves after running a job: its run, one result per (test, case, verdict)
+    under the attempt that ran, and the job done."""
+    logs = logs or {}
+    async with sessions.begin() as session:
+        attempt = await session.scalar(
+            text(
+                "UPDATE jobs SET status = 'running', attempt_id = gen_random_uuid(), "
+                "attempts = attempts + 1, lease_until = now() + interval '20 minutes' "
+                "WHERE id = :id RETURNING attempt_id"
+            ),
+            {"id": job_id},
+        )
+        assert attempt is not None, f"no job {job_id}"
+        session.add(
+            models.RunResult(
+                job_id=job_id,
+                attempt_id=attempt,
+                build_status=build,
+                startup_status=startup,
+                startup_detail=startup_detail,
+                build_log_path=str(logs["build"]) if "build" in logs else None,
+                app_log_path=str(logs["app"]) if "app" in logs else None,
+                started_at=datetime.now(UTC),
+                finished_at=datetime.now(UTC),
+            )
+        )
+        for spec, case_id, verdict in results:
+            passed = verdict == "pass"
+            session.add(
+                models.TestResult(
+                    job_id=job_id,
+                    attempt_id=attempt,
+                    spec_id=spec.id,
+                    case_id=case_id,
+                    verdict=verdict,
+                    assertion_results=[
+                        {
+                            "op": "status_equals",
+                            "expected": 200,
+                            "actual": 200 if passed else 500,
+                            "passed": passed,
+                        }
+                    ],
+                    duration_ms=12,
+                    error=None if verdict in ("pass", "fail") else "the app did not start",
+                )
+            )
+        await session.flush()
+        await session.execute(
+            text("UPDATE jobs SET status = 'done', finished_at = now() WHERE id = :id"),
+            {"id": job_id},
+        )

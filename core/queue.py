@@ -80,6 +80,11 @@ def draft_key(team_id: uuid.UUID, claims_version: int) -> str:
     return f"draft:{team_id}:{claims_version}"
 
 
+def self_check_key(snapshot_id: uuid.UUID, client_request_id: str) -> str:
+    """One self-check per snapshot and click: a resent request finds the job it made."""
+    return f"self_check:{snapshot_id}:{client_request_id}"
+
+
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:
     """One poll per team per interval: every enqueue inside a bucket shares a key."""
     return f"poll:{team_id}:{int(at.timestamp()) // poll_interval_s}"

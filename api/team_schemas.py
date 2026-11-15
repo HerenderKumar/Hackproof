@@ -120,3 +120,43 @@ class SnapshotRequest(BaseModel):
 class SnapshotsView(BaseModel):
     snapshots: list[SnapshotOut]
     pending: list[PendingCommit]
+
+
+# --- self-checks -----------------------------------------------------------------------------
+
+RequestId = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{8,100}$")]
+
+
+class SelfCheckIn(Strict):
+    client_request_id: RequestId  # made once per click, so a resent request finds its job
+
+
+class SelfCheckStart(BaseModel):
+    job_id: uuid.UUID
+    status: str
+
+
+class RunOut(BaseModel):
+    build_status: str
+    startup_status: str
+    startup_detail: str | None
+
+
+class ResultOut(BaseModel):
+    claim_id: str
+    case_id: str | None
+    verdict: str
+    assertion_results: Any
+    error: str | None
+    duration_ms: int | None
+
+
+class SelfCheckView(BaseModel):
+    job_id: uuid.UUID
+    snapshot_id: uuid.UUID | None
+    commit_sha: str | None
+    status: str
+    error: str | None
+    run: RunOut | None
+    results: list[ResultOut]
+    claim_verdicts: dict[str, str]

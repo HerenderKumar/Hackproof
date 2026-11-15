@@ -324,3 +324,8 @@ async def test_a_dependent_job_runs_after_its_dependency_fails(sessions: Session
 def test_one_draft_job_per_team_and_claims_version() -> None:
     team = uuid.UUID("11111111-1111-1111-1111-111111111111")
     assert queue.draft_key(team, 3) == f"draft:{team}:3"
+
+
+def test_one_self_check_job_per_snapshot_and_request() -> None:
+    snapshot = uuid.UUID("22222222-2222-2222-2222-222222222222")
+    assert queue.self_check_key(snapshot, "request-0001") == f"self_check:{snapshot}:request-0001"

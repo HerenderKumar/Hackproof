@@ -92,3 +92,10 @@ async def test_no_device_is_added_after_the_deadline(api: Api, clock: FakeClock)
     late = await flow.client.post("/api/team/devices", json={"label": "laptop"})
     assert late.status_code == 409 and late.json()["detail"]["code"] == "deadline_passed"
     assert (await flow.client.get("/api/team/devices")).json()["can_add"] is False
+
+
+async def test_a_device_code_never_looks_like_an_option(api: Api, clock: FakeClock) -> None:
+    # token_urlsafe can start with "-", which `--code <code>` would read as another option.
+    flow = await started(api, clock)
+    codes = [(await add_device(flow, f"device {n}"))[1] for n in range(12)]
+    assert all(code.startswith("hpd-") and len(code) > 40 for code in codes)

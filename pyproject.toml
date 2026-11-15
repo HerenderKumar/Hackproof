@@ -67,6 +67,8 @@ known-first-party = ["core", "api", "worker", "runner", "scripts", "tests"]
 "tests/*" = ["B011", "ASYNC240"]
 # Command-line scripts report on stdout.
 "scripts/*" = ["T20"]
+# The kickoff scanner talks to the participant.
+"scanner/*" = ["T20"]
 
 [tool.mypy]
 python_version = "3.12"

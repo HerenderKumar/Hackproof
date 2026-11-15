@@ -58,7 +58,8 @@ async def add_device(body: DeviceIn, session: TeamUser, request: Request, db: Db
     if taken is not None:
         raise api_error(409, "device_label_taken", "Your team already has a device of that name.")
 
-    code = new_token()
+    # The prefix keeps a code from starting with "-": the command passes it after `--code`.
+    code = f"hpd-{new_token()}"
     device = models.BaselineDevice(team_id=team.id, label=body.label, code_hash=hash_token(code))
     db.add(device)
     try:

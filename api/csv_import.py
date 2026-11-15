@@ -1,8 +1,9 @@
 """Parsing the team import file (section 5.1).
 
-Header: `team_name,contact_email,repo_url`. Only `team_name` is required; the other two
-columns, and their values, are optional. Parsing reports every problem with its line number
-and never touches the database.
+Header: `team_name,contact_email,repo_url`, and optionally `members` (M9: how many people the
+team has, so the organiser sees whose devices are not yet scanned). Only `team_name` is
+required; the other columns, and their values, are optional. Parsing reports every problem
+with its line number and never touches the database.
 """
 
 import csv
@@ -13,6 +14,7 @@ from dataclasses import dataclass
 MAX_BYTES = 1_000_000
 MAX_ROWS = 500
 COLUMNS = ("team_name", "contact_email", "repo_url")
+OPTIONAL_COLUMNS = ("members",)
 MAX_LENGTH = {"team_name": 100, "contact_email": 254, "repo_url": 300}
 
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -24,6 +26,7 @@ class TeamRow:
     name: str
     contact_email: str | None
     repo_url: str | None
+    members: int | None = None
 
 
 @dataclass(frozen=True)
@@ -45,9 +48,9 @@ def parse_teams_csv(data: bytes) -> tuple[list[TeamRow], list[RowError]]:
         return [], [RowError(1, "the file is empty")]
 
     columns = [cell.strip().lower() for cell in header]
-    unknown = [c for c in columns if c not in COLUMNS]
+    unknown = [c for c in columns if c not in COLUMNS + OPTIONAL_COLUMNS]
     if unknown:
-        allowed = ", ".join(COLUMNS)
+        allowed = ", ".join(COLUMNS + OPTIONAL_COLUMNS)
         return [], [RowError(1, f"unknown column {unknown[0]!r}; the columns are {allowed}")]
     if "team_name" not in columns:
         return [], [RowError(1, "the header must include team_name")]
@@ -76,6 +79,7 @@ def parse_teams_csv(data: bytes) -> tuple[list[TeamRow], list[RowError]]:
                 name=values["team_name"],
                 contact_email=values.get("contact_email") or None,
                 repo_url=values.get("repo_url") or None,
+                members=int(values["members"]) if values.get("members") else None,
             )
         )
 
@@ -91,6 +95,9 @@ def _problem(values: dict[str, str], first_seen: dict[str, int]) -> str | None:
     for column, limit in MAX_LENGTH.items():
         if len(values.get(column, "")) > limit:
             return f"{column} is longer than {limit} characters"
+    members = values.get("members")
+    if members and not (members.isdigit() and 1 <= int(members) <= 50):
+        return "members must be a whole number from 1 to 50"
     email = values.get("contact_email")
     if email and not _EMAIL.match(email):
         return "contact_email is not an email address"

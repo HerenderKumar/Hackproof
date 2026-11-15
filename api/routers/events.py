@@ -127,6 +127,7 @@ async def import_teams(event_id: uuid.UUID, file: UploadFile, _: Organiser, db: 
             name=row.name,
             contact_email=row.contact_email,
             repo_url=row.repo_url,  # a suggestion until the team registers it (D-038)
+            members=row.members,
         )
         db.add(team)
         created.append(team)

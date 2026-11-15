@@ -87,3 +87,12 @@ def test_too_many_rows_are_reported() -> None:
     body = "".join(f"Team {i}\n" for i in range(MAX_ROWS + 1))
     _, errors = parse("team_name\n" + body)
     assert errors == [RowError(1, f"the file has more than {MAX_ROWS} teams")]
+
+
+def test_a_members_column_is_optional_and_a_whole_number() -> None:
+    rows, errors = parse("team_name,members\nRocket,4\nComet,\n")
+    assert errors == [] and [(r.name, r.members) for r in rows] == [("Rocket", 4), ("Comet", None)]
+    assert parse("team_name\nRocket\n")[0][0].members is None
+    for bad in ("0", "51", "two", "3.5", "-1"):
+        _, errors = parse(f"team_name,members\nRocket,{bad}\n")
+        assert [e.message for e in errors] == ["members must be a whole number from 1 to 50"], bad

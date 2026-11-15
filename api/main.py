@@ -9,6 +9,7 @@ from api.auth import SessionCodec
 from api.middleware import RequestIdMiddleware
 from api.routers import (
     auth,
+    event_baselines,
     events,
     health,
     judge,
@@ -82,4 +83,5 @@ def create_app(
     app.include_router(media.router)
     app.include_router(team_devices.router)
     app.include_router(scan.router)
+    app.include_router(event_baselines.router)
     return app

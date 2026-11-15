@@ -128,3 +128,36 @@ class BaselineReceipt(BaseModel):
     manifest_sha256: str
     scanner_version: str
     receipt_hash: str
+
+
+# --- the organiser's view (Task 15) ----------------------------------------------------------
+
+
+class StarterOut(BaseModel):
+    """An approved starter kit: its runs are kept, never its files."""
+
+    id: uuid.UUID
+    name: str
+    files: int
+    runs: int
+    created_at: datetime
+
+
+class DeviceDetail(DeviceOut):
+    summary: ScanSummary | None
+    unreadable: list[Unreadable]
+    unreadable_more: int
+    scanner_version: str | None
+    platform: str | None
+
+
+class TeamBaselines(BaseModel):
+    team_id: uuid.UUID
+    team_name: str
+    members: int | None
+    missing: int | None  # members whose device has no scan on record, when members is known
+    devices: list[DeviceDetail]
+
+
+class BaselinesFeed(BaseModel):
+    teams: list[TeamBaselines]

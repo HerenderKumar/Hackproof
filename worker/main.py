@@ -8,7 +8,7 @@ from sqlalchemy import text
 
 from core.clock import Clock, SystemClock
 from core.db.engine import Sessions, make_engine, make_sessions
-from core.llm import make_llm_client
+from core.llm import LLMClient, make_llm_client
 from core.logging import configure_logging, get_logger
 from core.providers import make_provider
 from core.settings import Settings, get_settings
@@ -27,12 +27,18 @@ SCHEMA_POLL_S = 2.0
 
 
 def build_handlers(
-    settings: Settings, sessions: Sessions, clock: Clock, runtime: ContainerRuntime
+    settings: Settings,
+    sessions: Sessions,
+    clock: Clock,
+    runtime: ContainerRuntime,
+    *,
+    llm: LLMClient | None = None,
 ) -> dict[str, lanes.Handler]:
-    """Job handlers by kind. Each pipeline milestone adds its own."""
+    """Job handlers by kind. Each pipeline milestone adds its own. `llm` replaces the settings'
+    model client (the demo's seed passes one with its own transport)."""
     provider = make_provider(settings, clock)
     run = make_run_handler(sessions, runtime, settings, clock)
-    llm = make_llm_client(settings, sessions)
+    llm = llm or make_llm_client(settings, sessions)
     return {
         "prepare_snapshot": make_prepare_snapshot(
             sessions, provider, settings.artifact_dir / "archives"

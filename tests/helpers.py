@@ -20,9 +20,9 @@ async def enqueue(
     return job_id
 
 
-async def claim(sessions: Sessions, lane: queue.Lane) -> queue.Job | None:
+async def claim(sessions: Sessions, lane: queue.Lane, **kwargs: Any) -> queue.Job | None:
     async with sessions.begin() as s:
-        return await queue.claim(s, lane)
+        return await queue.claim(s, lane, **kwargs)
 
 
 async def claimed(sessions: Sessions, kind: str, **kwargs: Any) -> queue.Job:

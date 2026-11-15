@@ -5,6 +5,7 @@ can share a transaction with the rows it belongs to (a submission and its three 
 """
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal, cast
@@ -166,6 +167,7 @@ _CLAIM = text(
     WITH next AS (
       SELECT j.id FROM jobs j
       WHERE j.lane = :lane
+        AND (CAST(:teams AS uuid[]) IS NULL OR j.team_id = ANY(CAST(:teams AS uuid[])))
         AND j.run_after <= now()
         AND (j.status = 'queued' OR (j.status = 'running' AND j.lease_until < now()))
         AND (j.depends_on IS NULL OR EXISTS (
@@ -192,14 +194,20 @@ _FAIL_EXHAUSTED = text(
 )
 
 
-async def claim(session: AsyncSession, lane: Lane) -> Job | None:
+async def claim(
+    session: AsyncSession, lane: Lane, *, teams: Sequence[uuid.UUID] | None = None
+) -> Job | None:
     """Claim the next runnable job in a lane, or None if there is none.
+
+    With `teams`, only those teams' jobs are taken (a job with no team is not); the demo's seed
+    uses it so it never runs another event's jobs.
 
     A job whose lease ran out is claimed again with a fresh attempt ID. If that takes it past
     `max_attempts`, it is marked failed instead of being handed out.
     """
     while True:
-        row = (await session.execute(_CLAIM, {"lane": lane})).one_or_none()
+        params = {"lane": lane, "teams": None if teams is None else list(teams)}
+        row = (await session.execute(_CLAIM, params)).one_or_none()
         if row is None:
             return None
         job = Job.model_validate(row)

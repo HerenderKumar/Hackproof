@@ -9,6 +9,7 @@ from sqlalchemy import text
 from core import queue
 from core.codemap import GRAPHIFY_TIMEOUT_S
 from core.settings import Settings
+from tests.factories import make_event, make_team
 from tests.helpers import Sessions, claim, enqueue, expire_lease, job_row, make_runnable_now
 
 # --- enqueue -------------------------------------------------------------------------------
@@ -344,3 +345,27 @@ def test_one_self_check_job_per_snapshot_and_request() -> None:
 def test_one_final_run_per_submission() -> None:
     submission = uuid.UUID("33333333-3333-3333-3333-333333333333")
     assert queue.final_run_key(submission) == f"final_run:{submission}"
+
+
+async def _two_teams(sessions: Sessions) -> tuple[uuid.UUID, uuid.UUID]:
+    async with sessions.begin() as s:
+        event = make_event()
+        s.add(event)
+        await s.flush()
+        ours, theirs = make_team(event.id), make_team(event.id)
+        s.add_all([ours, theirs])
+        await s.flush()
+        return ours.id, theirs.id
+
+
+async def test_claim_can_be_limited_to_some_teams(sessions: Sessions) -> None:
+    ours, theirs = await _two_teams(sessions)
+    older = await enqueue(sessions, "final_run", team_id=theirs)
+    newer = await enqueue(sessions, "final_run", team_id=ours)
+    no_team = await enqueue(sessions, "final_run")
+
+    first = await claim(sessions, "heavy", teams=[ours])
+    assert first is not None and first.id == newer
+    assert await claim(sessions, "heavy", teams=[ours]) is None
+    rest = [await claim(sessions, "heavy") for _ in range(2)]
+    assert [j.id for j in rest if j] == [older, no_team]

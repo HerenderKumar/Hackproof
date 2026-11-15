@@ -209,7 +209,9 @@ async def indexed_baseline(
     return baseline
 
 
-async def submitted(sessions: Any, root: Path, team_id: uuid.UUID, files: dict[str, bytes]) -> Any:
+async def submitted(
+    sessions: Any, root: Path, team_id: uuid.UUID, files: dict[str, bytes], **overrides: Any
+) -> Any:
     """A snapshot whose archive holds `files`, and a final submission of it."""
     from tests.factories import make_snapshot, make_submission
 
@@ -218,6 +220,6 @@ async def submitted(sessions: Any, root: Path, team_id: uuid.UUID, files: dict[s
         snapshot = make_snapshot(team_id, archive_path=str(archive), archive_sha256=digest)
         session.add(snapshot)
         await session.flush()
-        submission = make_submission(team_id, snapshot.id)
+        submission = make_submission(team_id, snapshot.id, **overrides)
         session.add(submission)
     return submission

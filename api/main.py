@@ -13,12 +13,14 @@ from api.routers import (
     events,
     health,
     judge,
+    judge_prior_work,
     media,
     organiser,
     scan,
     team,
     team_claims,
     team_devices,
+    team_prior_work,
     team_snapshots,
     team_submissions,
     team_tests,
@@ -84,4 +86,6 @@ def create_app(
     app.include_router(team_devices.router)
     app.include_router(scan.router)
     app.include_router(event_baselines.router)
+    app.include_router(team_prior_work.router)
+    app.include_router(judge_prior_work.router)
     return app

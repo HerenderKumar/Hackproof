@@ -161,3 +161,92 @@ class TeamBaselines(BaseModel):
 
 class BaselinesFeed(BaseModel):
     teams: list[TeamBaselines]
+
+
+# --- the prior-work report (Task 17) ---------------------------------------------------------
+
+MatchKind = Literal["identical_file", "unchanged", "edited", "possibly_related"]
+
+
+class TotalsOut(BaseModel):
+    total: int
+    excluded_starter: int
+    excluded_common: int
+    eligible: int
+    matched: int
+    identical: int
+    unchanged: int
+    edited: int
+    late_matched: int
+    percent: float | None
+    late_percent: float | None
+
+
+class FileShareOut(BaseModel):
+    path: str
+    total: int
+    excluded: int
+    matched: int
+    late_matched: int
+
+
+class MatchOut(BaseModel):
+    id: uuid.UUID
+    match_key: str
+    ordinal: int
+    kind: MatchKind
+    late: bool
+    tokens: int
+    score: float | None
+    final_path: str
+    final_start_line: int
+    final_end_line: int
+    device_label: str
+    old_path: str
+    old_start_line: int
+    old_end_line: int
+    also_in: int
+    explanation: str | None
+    explained_at: datetime | None
+
+
+class PriorWorkView(BaseModel):
+    """A report without any code: totals, files, devices, matches by place, explanations.
+    Its matches come in the report's order, never by a percentage."""
+
+    status: Literal["pending", "ready", "no_baseline", "failed"]
+    detail: str | None
+    submission_id: uuid.UUID
+    totals: TotalsOut | None
+    files: list[FileShareOut]
+    devices: list[DeviceOut]
+    matches: list[MatchOut]
+    matches_total: int
+    explanation: str | None  # of the whole report
+    explained_at: datetime | None
+    code_deleted_at: datetime | None
+    can_explain: bool
+
+
+class ExcerptOut(BaseModel):
+    first_line: int
+    text: str
+
+
+class MatchExcerpts(BaseModel):
+    """The only place baseline code is ever returned: one match's two sides."""
+
+    id: uuid.UUID
+    final: ExcerptOut
+    old: ExcerptOut
+
+
+class ExplanationIn(Strict):
+    match_key: Annotated[str, StringConstraints(max_length=64)]  # '' explains the whole report
+    text: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)]
+
+
+class ExplanationOut(BaseModel):
+    match_key: str
+    text: str
+    created_at: datetime

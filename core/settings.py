@@ -82,9 +82,22 @@ class Settings(BaseSettings):
     # Chromium's own sandbox (D-058). Off only on a host whose kernel refuses it.
     runner_browser_sandbox: bool = True
 
+    # Kickoff baselines (M9, D-052). BASELINE_KEY encrypts uploaded device code at rest:
+    # 64 hex characters, `openssl rand -hex 32`. A part is at most BASELINE_PART_BYTES as sent.
+    baseline_key: SecretStr | None = None
+    baseline_part_bytes: int = 4194304
+    baseline_max_file_bytes: int = 1048576
+    baseline_max_bytes: int = 2147483648
+    max_devices: int = 12
+    match_context_lines: int = 5
+    # Stage 5's "possibly related" list, off unless asked for.
+    embeddings: Literal["off", "on"] = "off"
+    related_min_score: float = 0.80
+
     # Worker
     watch_concurrency: int = 4
     heavy_concurrency: int = 1
+    index_concurrency: int = 1
 
     log_level: str = "INFO"
 
@@ -111,6 +124,22 @@ class Settings(BaseSettings):
             raise ValueError("HOST_ARTIFACT_DIR must be an absolute path")
         return value
 
+    @field_validator("baseline_key")
+    @classmethod
+    def _baseline_key_is_256_bits(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None or not value.get_secret_value():
+            return None
+        key = value.get_secret_value()
+        if len(key) != 64 or any(c not in "0123456789abcdefABCDEF" for c in key):
+            raise ValueError("BASELINE_KEY must be 64 hex characters: openssl rand -hex 32")
+        return value
+
+    @property
+    def baseline_cipher_key(self) -> bytes:
+        if self.baseline_key is None:
+            raise MissingSettingsError("kickoff baselines", ["BASELINE_KEY"])
+        return bytes.fromhex(self.baseline_key.get_secret_value())
+
     @property
     def is_local(self) -> bool:
         return self.app_env == "local"
@@ -130,6 +159,8 @@ class Settings(BaseSettings):
         # The API checks a team's repository with the provider when it is registered.
         if self.repo_provider == "github" and not _has_value(self.github_token):
             missing.append("GITHUB_TOKEN")
+        if self.baseline_key is None:
+            missing.append("BASELINE_KEY")  # the scan routes encrypt what devices upload
         if missing:
             raise MissingSettingsError("api", missing)
 
@@ -141,6 +172,8 @@ class Settings(BaseSettings):
             missing.append("LLM_API_KEY")
         if self.repo_provider == "github" and not _has_value(self.github_token):
             missing.append("GITHUB_TOKEN")
+        if self.baseline_key is None:
+            missing.append("BASELINE_KEY")  # indexing and comparing read the encrypted parts
         if missing:
             raise MissingSettingsError("worker", missing)
 

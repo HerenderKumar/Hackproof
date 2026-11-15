@@ -4,6 +4,8 @@ import pytest
 
 from core.settings import MissingSettingsError, Settings
 
+KEY = "ab" * 32  # a BASELINE_KEY: 64 hex characters
+
 
 def make(**overrides: object) -> Settings:
     return Settings(_env_file=None, **overrides)  # type: ignore[arg-type]
@@ -60,7 +62,9 @@ def test_api_requires_organiser_password_and_session_secret() -> None:
 
 
 def test_api_requirements_pass_when_secrets_are_set() -> None:
-    make(organiser_password="pw", session_secret="s" * 32, repo_provider="local").require_for_api()
+    make(
+        organiser_password="pw", session_secret="s" * 32, repo_provider="local", baseline_key=KEY
+    ).require_for_api()
 
 
 def test_worker_requires_artifact_dir_and_live_llm_key() -> None:
@@ -79,7 +83,11 @@ def test_recording_calls_the_model_so_it_needs_the_key(tmp_path: Path) -> None:
 
 def test_worker_does_not_need_an_llm_key_in_replay_mode(tmp_path: Path) -> None:
     make(
-        host_artifact_dir=tmp_path, llm_api_key=None, llm_mode="replay", repo_provider="local"
+        host_artifact_dir=tmp_path,
+        llm_api_key=None,
+        llm_mode="replay",
+        repo_provider="local",
+        baseline_key=KEY,
     ).require_for_worker()
 
 
@@ -89,7 +97,9 @@ def test_an_anthropic_key_is_never_used_as_the_llm_key(
     # Model calls go through the gateway with its own key, not straight to Anthropic (D-037).
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-not-used")
     monkeypatch.delenv("LLM_API_KEY", raising=False)
-    settings = make(host_artifact_dir=tmp_path, llm_mode="live", repo_provider="local")
+    settings = make(
+        host_artifact_dir=tmp_path, llm_mode="live", repo_provider="local", baseline_key=KEY
+    )
 
     assert not hasattr(settings, "anthropic_api_key")
     with pytest.raises(MissingSettingsError) as missing:
@@ -120,7 +130,7 @@ def test_secrets_are_not_shown_in_repr() -> None:
 
 
 def test_the_api_needs_a_github_token_to_validate_github_repositories() -> None:
-    base = {"organiser_password": "pw", "session_secret": "s" * 32}
+    base = {"organiser_password": "pw", "session_secret": "s" * 32, "baseline_key": KEY}
 
     make(**base, repo_provider="local").require_for_api()
     make(**base, repo_provider="github", github_token="t").require_for_api()
@@ -128,3 +138,30 @@ def test_the_api_needs_a_github_token_to_validate_github_repositories() -> None:
         make(**base, repo_provider="github", github_token=None).require_for_api()
 
     assert missing.value.names == ["GITHUB_TOKEN"]
+
+
+def test_the_baseline_key_must_be_64_hex_characters() -> None:
+    assert make(baseline_key=KEY).baseline_cipher_key == bytes.fromhex(KEY)
+    for bad in ("ab" * 31, "zz" * 32, KEY + "00"):
+        with pytest.raises(ValueError, match="BASELINE_KEY"):
+            make(baseline_key=bad)
+    with pytest.raises(MissingSettingsError, match="BASELINE_KEY"):
+        _ = make(baseline_key=None).baseline_cipher_key
+
+
+def test_the_api_and_the_worker_need_the_baseline_key(tmp_path: Path) -> None:
+    api = make(organiser_password="pw", session_secret="s" * 32, repo_provider="local")
+    with pytest.raises(MissingSettingsError, match="BASELINE_KEY"):
+        api.require_for_api()
+    worker = make(host_artifact_dir=tmp_path, llm_mode="replay", repo_provider="local")
+    with pytest.raises(MissingSettingsError, match="BASELINE_KEY"):
+        worker.require_for_worker()
+
+
+def test_the_baseline_limits_default_to_the_plan() -> None:
+    s = make()
+    assert (s.baseline_part_bytes, s.baseline_max_file_bytes, s.baseline_max_bytes) == (
+        4194304, 1048576, 2147483648,
+    )  # fmt: skip
+    assert (s.max_devices, s.match_context_lines, s.index_concurrency) == (12, 5, 1)
+    assert (s.embeddings, s.related_min_score) == ("off", 0.80)

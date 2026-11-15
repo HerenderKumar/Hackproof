@@ -17,6 +17,19 @@ from worker import lanes
 # --- one job -------------------------------------------------------------------------------
 
 
+async def test_a_handler_that_is_not_ready_is_deferred_not_failed(sessions: Sessions) -> None:
+    job = await claimed(sessions, "prior_work")
+
+    async def handler(_: queue.Job) -> None:
+        raise lanes.NotReady(45)
+
+    await lanes.run_job(job, sessions, {"prior_work": handler})
+
+    row = await job_row(sessions, job.id)
+    assert (row.status, row.attempts, row.error_class) == ("queued", 0, None)
+    assert await claim(sessions, "index") is None
+
+
 async def test_a_job_whose_handler_returns_is_marked_done(sessions: Sessions) -> None:
     job = await claimed(sessions, "poll_repo")
     seen: list[queue.Job] = []

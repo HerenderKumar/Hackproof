@@ -9,9 +9,18 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Text, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, DateTime, ForeignKey, LargeBinary, Text, text
+from sqlalchemy.dialects.postgresql import JSONB, REAL
 from sqlalchemy.orm import DeclarativeBase, Mapped, MappedColumn, mapped_column
+
+# The extensions a kickoff scan reads unless the organiser changes them (M9, migration 0004).
+SCAN_EXTENSIONS = (
+    ".js", ".jsx", ".ts", ".tsx", ".py", ".c", ".h", ".cpp", ".cc", ".hpp", ".java", ".go",
+)  # fmt: skip
+
+
+def json_list(items: tuple[str, ...]) -> str:
+    return "[" + ",".join(f'"{item}"' for item in items) + "]"
 
 
 class Base(DeclarativeBase):
@@ -55,6 +64,11 @@ class Event(Base):
     poll_interval_seconds: Mapped[int] = mapped_column(server_default=text("300"))
     scores_locked: Mapped[bool] = mapped_column(server_default=text("false"))
     created_at: Mapped[datetime] = _now()
+    # The kickoff scan (M9): which files a device sends, how many teams make code common, and
+    # how long baseline code is kept after the deadline.
+    scan_extensions: Mapped[Any] = _json(default=json_list(SCAN_EXTENSIONS))
+    common_code_min_teams: Mapped[int] = mapped_column(server_default=text("3"))
+    baseline_retention_days: Mapped[int] = mapped_column(server_default=text("30"))
 
 
 class Team(Base):
@@ -72,6 +86,7 @@ class Team(Base):
     registered_at: Mapped[datetime | None]
     rules_acknowledged_at: Mapped[datetime | None]
     health_path: Mapped[str] = mapped_column(server_default=text("'/'"))
+    members: Mapped[int | None]
 
 
 class Judge(Base):
@@ -317,4 +332,119 @@ class LlmCall(Base):
     output_tokens: Mapped[int | None]
     duration_ms: Mapped[int | None]
     ok: Mapped[bool]
+    created_at: Mapped[datetime] = _now()
+
+
+# --- M9: the kickoff baseline (D-052) -------------------------------------------------------
+
+
+class BaselineDevice(Base):
+    __tablename__ = "baseline_devices"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    label: Mapped[str]
+    code_hash: Mapped[str]  # hash_token(code); the code itself is shown once
+    created_at: Mapped[datetime] = _now()
+
+
+class Baseline(Base):
+    """One scan of one device. Its code is on disk, encrypted; this row is its bookkeeping."""
+
+    __tablename__ = "baselines"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    device_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("baseline_devices.id"))
+    team_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("teams.id"))
+    status: Mapped[str]
+    started_at: Mapped[datetime] = _now()
+    sealed_at: Mapped[datetime | None]
+    late: Mapped[bool | None]
+    complete: Mapped[bool | None]
+    incomplete_reasons: Mapped[Any] = _json(default="[]")
+    parts: Mapped[Any] = _json(default="[]")
+    bytes_received: Mapped[int] = mapped_column(BigInteger, server_default=text("0"))
+    files: Mapped[int | None]
+    summary: Mapped[Any] = _json_or_null()
+    unreadable: Mapped[Any] = _json(default="[]")
+    unreadable_more: Mapped[int] = mapped_column(server_default=text("0"))
+    scanner_version: Mapped[str | None]
+    platform: Mapped[str | None]
+    extensions: Mapped[Any] = _json_or_null()
+    index_settings: Mapped[Any] = _json_or_null()
+    index_summary: Mapped[Any] = _json_or_null()
+    manifest_sha256: Mapped[str | None]
+    receipt_hash: Mapped[str | None]
+    error_detail: Mapped[str | None]
+
+
+class Starter(Base):
+    """Starter code the organiser approved: its runs are excluded from every comparison."""
+
+    __tablename__ = "starters"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id"))
+    name: Mapped[str]
+    archive_sha256: Mapped[str]
+    files: Mapped[int]
+    runs: Mapped[bytes] = mapped_column(LargeBinary)  # pack_runs: sorted distinct 8-byte hashes
+    settings: Mapped[Any] = _json()
+    created_at: Mapped[datetime] = _now()
+
+
+class PriorWorkReport(Base):
+    __tablename__ = "prior_work_reports"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"))
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id"))
+    attempt_id: Mapped[uuid.UUID]
+    status: Mapped[str]
+    detail: Mapped[str | None]
+    totals: Mapped[Any] = _json_or_null()
+    files: Mapped[Any] = _json(default="[]")
+    settings: Mapped[Any] = _json(default="{}")
+    baseline_ids: Mapped[Any] = _json(default="[]")
+    purged_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = _now()
+
+
+class PriorWorkMatch(Base):
+    __tablename__ = "prior_work_matches"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    report_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("prior_work_reports.id"))
+    ordinal: Mapped[int]
+    match_key: Mapped[str]
+    kind: Mapped[str]
+    late: Mapped[bool]
+    tokens: Mapped[int]
+    score: Mapped[float | None] = mapped_column(REAL)
+    final_path: Mapped[str]
+    final_start_line: Mapped[int]
+    final_end_line: Mapped[int]
+    baseline_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("baselines.id"))
+    device_label: Mapped[str]
+    old_path: Mapped[str]
+    old_start_line: Mapped[int]
+    old_end_line: Mapped[int]
+    also_in: Mapped[int] = mapped_column(server_default=text("0"))
+    # Encrypted; NULL once the baseline's retention has passed.
+    final_excerpt: Mapped[bytes | None] = mapped_column(LargeBinary)
+    old_excerpt: Mapped[bytes | None] = mapped_column(LargeBinary)
+    final_excerpt_line: Mapped[int]
+    old_excerpt_line: Mapped[int]
+
+
+class MatchExplanation(Base):
+    """A team's word on a match, or on the whole report when `match_key` is empty. Keyed by
+    submission and match key, so it survives a rerun of the report."""
+
+    __tablename__ = "match_explanations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    submission_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("submissions.id"))
+    match_key: Mapped[str] = mapped_column(default="", server_default=text("''"))
+    text: Mapped[str]
     created_at: Mapped[datetime] = _now()

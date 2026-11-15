@@ -142,3 +142,20 @@ def make_test_spec(
         "approved_spec_hash": digest if status == "approved" else None,
     }
     return models.TestSpec(**{**values, **overrides})
+
+
+def make_device(team_id: uuid.UUID, **overrides: Any) -> models.BaselineDevice:
+    """A device of a team's kickoff scan (M9). `code_hash` stands in for a hashed code."""
+    values: dict[str, Any] = {
+        "team_id": team_id,
+        "label": f"laptop {uuid.uuid4().hex[:6]}",
+        "code_hash": uuid.uuid4().hex * 2,
+    }
+    return models.BaselineDevice(**{**values, **overrides})
+
+
+def make_baseline(
+    device_id: uuid.UUID, team_id: uuid.UUID, status: str = "uploading", **overrides: Any
+) -> models.Baseline:
+    values: dict[str, Any] = {"device_id": device_id, "team_id": team_id, "status": status}
+    return models.Baseline(**{**values, **overrides})

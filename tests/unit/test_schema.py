@@ -10,6 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core.db import models
 from tests.factories import (
     CLAIM_ITEMS,
+    make_baseline,
+    make_device,
     make_event,
     make_snapshot,
     make_submission,
@@ -21,6 +23,9 @@ EXPECTED_TABLES = {
     "events", "teams", "judges", "access_links", "repo_observations", "claims", "snapshots",
     "test_specs", "submissions", "jobs", "run_results", "test_results", "audits", "briefs",
     "claim_marks", "scores", "brief_views", "llm_calls",
+    # M9: the kickoff baseline (D-052)
+    "baseline_devices", "baselines", "starters", "prior_work_reports", "prior_work_matches",
+    "match_explanations",
 }  # fmt: skip
 
 
@@ -158,3 +163,72 @@ async def test_a_spec_needs_a_team_but_not_a_snapshot(
     with pytest.raises(IntegrityError):
         async with sessions.begin() as s:
             s.add(make_test_spec(None, "c2"))
+
+
+# --- M9: the kickoff baseline --------------------------------------------------------------
+
+
+async def test_an_event_starts_with_the_twelve_extensions(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as s:
+        event = make_event()
+        s.add(event)
+    async with sessions() as s:
+        stored = await s.get(models.Event, event.id)
+    assert stored is not None
+    assert stored.scan_extensions == [
+        ".js", ".jsx", ".ts", ".tsx", ".py", ".c", ".h", ".cpp", ".cc", ".hpp", ".java", ".go",
+    ]  # fmt: skip
+    assert (stored.common_code_min_teams, stored.baseline_retention_days) == (3, 30)
+
+
+async def test_a_device_has_one_live_baseline_and_one_upload(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    team = await _team(sessions)
+    async with sessions.begin() as s:
+        device = make_device(team.id)
+        s.add(device)
+        await s.flush()
+        s.add(make_baseline(device.id, team.id, "sealed"))
+        s.add(make_baseline(device.id, team.id, "uploading"))
+        s.add(make_baseline(device.id, team.id, "superseded"))
+        s.add(make_baseline(device.id, team.id, "superseded"))
+    for status in ("indexed", "uploading"):
+        with pytest.raises(IntegrityError):
+            async with sessions.begin() as s:
+                s.add(make_baseline(device.id, team.id, status))
+
+
+async def test_the_job_table_takes_the_new_kinds_and_the_index_lane(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    async with sessions.begin() as s:
+        for n, kind in enumerate(("index_baseline", "prior_work", "purge_baselines")):
+            await s.execute(
+                text(
+                    "INSERT INTO jobs (kind, lane, priority, idempotency_key) "
+                    "VALUES (:kind, 'index', 1, :key)"
+                ),
+                {"kind": kind, "key": f"k{n}"},
+            )
+    with pytest.raises(IntegrityError):
+        async with sessions.begin() as s:
+            await s.execute(
+                text(
+                    "INSERT INTO jobs (kind, lane, priority, idempotency_key) "
+                    "VALUES ('prior_work', 'nowhere', 1, 'k9')"
+                )
+            )
+
+
+async def test_an_explanation_is_at_most_2000_characters(
+    sessions: async_sessionmaker[AsyncSession],
+) -> None:
+    submission = await _submission(sessions)
+    async with sessions.begin() as s:
+        s.add(models.MatchExplanation(submission_id=submission.id, text="x" * 2000))
+    with pytest.raises(IntegrityError):
+        async with sessions.begin() as s:
+            s.add(models.MatchExplanation(submission_id=submission.id, text="x" * 2001))

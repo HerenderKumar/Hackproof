@@ -53,6 +53,10 @@ def test_kinds_match_the_table_in_section_11() -> None:
         "final_run": ("heavy", 100, 1200),
         "audit": ("heavy", 100, 600),  # the brief's 300 is shorter than an audit (D-053)
         "brief": ("heavy", 100, 180),
+        # M9: the kickoff baseline's lane
+        "index_baseline": ("index", 40, 600),
+        "prior_work": ("index", 60, 600),
+        "purge_baselines": ("index", 5, 600),
     }
 
 
@@ -369,3 +373,65 @@ async def test_claim_can_be_limited_to_some_teams(sessions: Sessions) -> None:
     assert await claim(sessions, "heavy", teams=[ours]) is None
     rest = [await claim(sessions, "heavy") for _ in range(2)]
     assert [j.id for j in rest if j] == [older, no_team]
+
+
+# --- defer and extend a lease (M9) ---------------------------------------------------------
+
+
+async def _lease_left(sessions: Sessions, job_id: uuid.UUID) -> float:
+    async with sessions() as s:
+        left = await s.execute(
+            text("SELECT extract(epoch FROM lease_until - now()) FROM jobs WHERE id = :id"),
+            {"id": job_id},
+        )
+    return float(left.scalar_one())
+
+
+async def test_a_deferred_job_waits_and_keeps_its_attempts(sessions: Sessions) -> None:
+    job_id = await enqueue(sessions, "prior_work")
+    job = await claim(sessions, "index")
+    assert job is not None and job.attempts == 1
+
+    async with sessions.begin() as s:
+        assert await queue.defer(s, job, 30) is True
+
+    row = await job_row(sessions, job_id)
+    assert (row.status, row.attempts, row.lease_until) == ("queued", 0, None)
+    assert await claim(sessions, "index") is None  # it waits its 30 seconds
+    await make_runnable_now(sessions, job_id)
+    again = await claim(sessions, "index")
+    assert again is not None and again.attempts == 1
+
+    async with sessions.begin() as s:
+        assert await queue.defer(s, job, 30) is False  # the first attempt is stale
+    assert (await job_row(sessions, job_id)).status == "running"
+
+
+async def test_a_lease_is_extended_only_by_its_own_attempt(sessions: Sessions) -> None:
+    job_id = await enqueue(sessions, "index_baseline")
+    job = await claim(sessions, "index")
+    assert job is not None
+    async with sessions.begin() as s:
+        await s.execute(
+            text("UPDATE jobs SET lease_until = now() + interval '5 seconds' WHERE id = :id"),
+            {"id": job_id},
+        )
+
+    async with sessions.begin() as s:
+        assert await queue.extend_lease(s, job) is True
+    assert 595 <= await _lease_left(sessions, job_id) <= 600
+
+    await expire_lease(sessions, job_id)
+    taken = await claim(sessions, "index")
+    assert taken is not None and taken.attempt_id != job.attempt_id
+    async with sessions.begin() as s:
+        assert await queue.extend_lease(s, job) is False
+
+
+def test_the_baseline_keys_name_one_job_each() -> None:
+    baseline, submission, event = uuid.UUID(int=1), uuid.UUID(int=2), uuid.UUID(int=3)
+    assert queue.index_key(baseline) == f"index_baseline:{baseline}"
+    assert queue.prior_work_key(submission) == f"prior_work:{submission}"
+    assert queue.purge_key(event, datetime(2026, 11, 15, tzinfo=UTC).date()) == (
+        f"purge:{event}:2026-11-15"
+    )

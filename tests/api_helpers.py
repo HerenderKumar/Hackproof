@@ -25,6 +25,9 @@ EVENT: dict[str, Any] = {
 }
 
 
+BASELINE_KEY = "ab" * 32  # the key that encrypts uploaded baselines at rest (M9)
+
+
 def make_app(
     database_url: str,
     artifact_dir: Path,
@@ -40,6 +43,7 @@ def make_app(
         "app_env": "local",
         "public_base_url": PUBLIC_BASE_URL,
         "repo_provider": "local",
+        "baseline_key": BASELINE_KEY,
     }
     config = Settings(_env_file=None, **{**values, **settings})  # type: ignore[arg-type]
     return create_app(config, clock=clock, repo_provider=repos)

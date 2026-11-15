@@ -23,6 +23,7 @@ Then set, in `.env`:
 
 - `ORGANISER_PASSWORD`: the organiser's sign-in password.
 - `SESSION_SECRET`: `python3 -c "import secrets; print(secrets.token_urlsafe(48))"`.
+- `BASELINE_KEY`: `openssl rand -hex 32`.
 - `HOST_ARTIFACT_DIR`: an absolute path on this machine for build archives, logs and videos
   (it is created if missing).
 
@@ -108,6 +109,8 @@ Required:
 
 - `ORGANISER_PASSWORD`: the organiser's password (API only).
 - `SESSION_SECRET`: signs session cookies (API only).
+- `BASELINE_KEY`: 64 hex characters that encrypt the code devices upload in a kickoff scan
+  (API and worker).
 - `LLM_API_KEY`: the AI Credits gateway key (worker only); not needed with `LLM_MODE=replay`.
 - `GITHUB_TOKEN`: a read-only GitHub token, for rate limits; not needed with `REPO_PROVIDER=local`.
 - `HOST_ARTIFACT_DIR`: absolute host path for artifacts, mounted into the worker at the same path.

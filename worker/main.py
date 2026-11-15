@@ -1,4 +1,4 @@
-"""The worker process: one process, two lanes, a scheduler and a heartbeat (section 11)."""
+"""The worker process: one process, three lanes, a scheduler and a heartbeat (section 11)."""
 
 import asyncio
 import signal
@@ -125,6 +125,7 @@ async def serve(
         repo_provider=settings.repo_provider,
         watch_concurrency=settings.watch_concurrency,
         heavy_concurrency=settings.heavy_concurrency,
+        index_concurrency=settings.index_concurrency,
         docker_reachable=docker.reachable,
     )
     async with asyncio.TaskGroup() as tasks:
@@ -153,4 +154,7 @@ async def serve(
                     "heavy", sessions, handlers, stop, ready=lambda: docker.reachable, idle_s=idle_s
                 )
             )
+        for _ in range(settings.index_concurrency):
+            # Baselines are indexed and compared in a process pool; Docker plays no part.
+            tasks.create_task(lanes.consume("index", sessions, handlers, stop, idle_s=idle_s))
     log.info("worker_stopped")

@@ -75,6 +75,29 @@ async def test_the_worker_cleans_up_reports_health_schedules_and_runs_both_lanes
     }
 
 
+async def test_the_index_lane_runs_beside_the_others(sessions: Sessions, tmp_path: Path) -> None:
+    prior_work = await enqueue(sessions, "prior_work")
+    stop = asyncio.Event()
+
+    async def handler(job: queue.Job) -> None:
+        stop.set()
+
+    await asyncio.wait_for(
+        serve(
+            worker_settings(tmp_path),
+            sessions,
+            FakeRuntime(),
+            FakeClock(NOW),
+            {"prior_work": handler},
+            stop,
+            idle_s=0.01,
+        ),
+        timeout=10,
+    )
+
+    assert (await job_row(sessions, prior_work)).status == "done"
+
+
 async def test_heavy_jobs_stay_queued_while_docker_is_unreachable(
     sessions: Sessions, tmp_path: Path
 ) -> None:

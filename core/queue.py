@@ -7,7 +7,7 @@ can share a transaction with the rows it belongs to (a submission and its three 
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict
@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.db import models
 
-Lane = Literal["watch", "heavy"]
+Lane = Literal["watch", "heavy", "index"]
 ErrorClass = Literal["infra", "app", "budget", "validation"]
 RetryOutcome = Literal["retried", "failed", "stale"]
 
@@ -43,7 +43,14 @@ KINDS: dict[str, Kind] = {
     "final_run": Kind("heavy", 100, 1200),
     "audit": Kind("heavy", 100, 600),
     "brief": Kind("heavy", 100, 180),
+    # M9: tokenising and comparing baselines is processor-bound, so it has a lane of its own.
+    # Its handlers extend the lease every EXTEND_EVERY_S while a process pool works.
+    "index_baseline": Kind("index", 40, 600),
+    "prior_work": Kind("index", 60, 600),
+    "purge_baselines": Kind("index", 5, 600),
 }
+
+EXTEND_EVERY_S = 120
 
 # Delay before the retry that follows the first, second and any later infrastructure error.
 BACKOFF_S = (30, 120, 300)
@@ -102,6 +109,21 @@ def audit_key(submission_id: uuid.UUID) -> str:
 def brief_key(submission_id: uuid.UUID) -> str:
     """One brief per submission."""
     return f"brief:{submission_id}"
+
+
+def index_key(baseline_id: uuid.UUID) -> str:
+    """One index per sealed baseline."""
+    return f"index_baseline:{baseline_id}"
+
+
+def prior_work_key(submission_id: uuid.UUID) -> str:
+    """One prior-work report per submission."""
+    return f"prior_work:{submission_id}"
+
+
+def purge_key(event_id: uuid.UUID, day: date) -> str:
+    """One purge of an event's expired baselines per day."""
+    return f"purge:{event_id}:{day.isoformat()}"
 
 
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:
@@ -300,3 +322,37 @@ async def retry_or_fail(
         updated = await session.execute(_FAIL, params)
         outcome = "failed"
     return outcome if updated.first() is not None else "stale"
+
+
+_DEFER = text(
+    """
+    UPDATE jobs SET status = 'queued', lease_until = NULL, attempts = attempts - 1,
+                    run_after = now() + make_interval(secs => :delay_s)
+    WHERE id = :id AND attempt_id = :attempt_id AND status = 'running'
+    RETURNING id
+    """
+)
+
+
+async def defer(session: AsyncSession, job: Job, delay_s: float) -> bool:
+    """Put a running job back in the queue for `delay_s` without using up an attempt: it was
+    not ready to start (its inputs are still being written). False if this attempt is stale."""
+    updated = await session.execute(
+        _DEFER, {"id": job.id, "attempt_id": job.attempt_id, "delay_s": float(delay_s)}
+    )
+    return updated.first() is not None
+
+
+_EXTEND = text(
+    f"""
+    UPDATE jobs SET lease_until = now() + make_interval(secs => {_LEASE_S} END)
+    WHERE id = :id AND attempt_id = :attempt_id AND status = 'running'
+    RETURNING id
+    """
+)
+
+
+async def extend_lease(session: AsyncSession, job: Job) -> bool:
+    """Give a running attempt a fresh lease of its kind's length. False if it is stale."""
+    updated = await session.execute(_EXTEND, {"id": job.id, "attempt_id": job.attempt_id})
+    return updated.first() is not None

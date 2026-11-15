@@ -16,6 +16,7 @@ help: ## List targets
 
 env-check:
 	@test -f .env || { echo "No .env file. Copy .env.example to .env and fill in the required values."; exit 1; }
+	@grep -Eq '^BASELINE_KEY=[0-9a-fA-F]{64}$$' .env || { echo "BASELINE_KEY in .env must be 64 hex characters. Generate one: openssl rand -hex 32"; exit 1; }
 
 up: env-check ## Build and start postgres, buildkit, api, worker and web
 	$(COMPOSE) up -d --build

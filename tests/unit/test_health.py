@@ -22,6 +22,7 @@ async def app_client(**overrides: Any) -> AsyncIterator[httpx.AsyncClient]:
         _env_file=None,  # type: ignore[call-arg]
         organiser_password="pw",
         session_secret="s" * 32,
+        baseline_key="ab" * 32,
         **{"database_url": UNREACHABLE_DATABASE, "repo_provider": "local", **overrides},
     )
     app = create_app(settings, clock=FakeClock(NOW))

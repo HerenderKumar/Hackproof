@@ -63,10 +63,18 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
       APP_ENV: ${APP_ENV:-production}
+      # Encrypts the code devices upload in a kickoff scan (M9).
+      BASELINE_KEY: ${BASELINE_KEY:?Set BASELINE_KEY in .env (openssl rand -hex 32)}
+      BASELINE_PART_BYTES: ${BASELINE_PART_BYTES:-4194304}
+      BASELINE_MAX_FILE_BYTES: ${BASELINE_MAX_FILE_BYTES:-1048576}
+      BASELINE_MAX_BYTES: ${BASELINE_MAX_BYTES:-2147483648}
+      MAX_DEVICES: ${MAX_DEVICES:-12}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
       - ${HOST_ARTIFACT_DIR}:${HOST_ARTIFACT_DIR}:ro
+      # The one folder the API writes: encrypted baseline parts as devices upload them (M9).
+      - ${HOST_ARTIFACT_DIR}/baselines:${HOST_ARTIFACT_DIR}/baselines
       - ./fixtures/remotes:/app/fixtures/remotes:ro
     depends_on:
       postgres:
@@ -109,6 +117,11 @@ services:
       DRAFT_UI_MODEL: ${DRAFT_UI_MODEL-anthropic/claude-haiku-5.5}
       WATCH_CONCURRENCY: ${WATCH_CONCURRENCY:-4}
       HEAVY_CONCURRENCY: ${HEAVY_CONCURRENCY:-1}
+      INDEX_CONCURRENCY: ${INDEX_CONCURRENCY:-1}
+      BASELINE_KEY: ${BASELINE_KEY:?Set BASELINE_KEY in .env (openssl rand -hex 32)}
+      BASELINE_MAX_FILE_BYTES: ${BASELINE_MAX_FILE_BYTES:-1048576}
+      MATCH_CONTEXT_LINES: ${MATCH_CONTEXT_LINES:-5}
+      EMBEDDINGS: ${EMBEDDINGS:-off}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and outside, so bind-mount paths the worker gives Docker resolve on the host.

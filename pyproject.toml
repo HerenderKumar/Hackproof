@@ -18,6 +18,7 @@ dependencies = [
     "structlog>=24.4",
     "docker>=7.1",
     "python-multipart>=0.0.12",
+    "cryptography>=44",
 ]
 
 [dependency-groups]
@@ -48,6 +49,10 @@ line-length = 100
 target-version = "py312"
 # Markdown is excluded so ruff never rewrites code blocks in the brief.
 extend-exclude = ["fixtures", "web", ".artifacts", "*.md"]
+
+[tool.ruff.per-file-target-version]
+# The kickoff scanner runs on participants' own machines, so it keeps to Python 3.9.
+"scanner/*.py" = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "T20", "ASYNC", "RUF"]

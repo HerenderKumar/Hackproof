@@ -34,6 +34,16 @@ class Outcome:
 Handler = Callable[[queue.Job], Awaitable[Outcome | None]]
 
 
+class NotReady(Exception):
+    """Raised by a handler whose inputs are not there yet (a baseline still being indexed).
+    The loop puts the job back for `delay_s` without using up an attempt."""
+
+    def __init__(self, delay_s: float, reason: str = "") -> None:
+        super().__init__(reason or f"not ready; retry in {delay_s} s")
+        self.delay_s = delay_s
+        self.reason = reason
+
+
 # Jobs whose page renders without the model's part (section 7's degradation rule).
 RENDERS_WITHOUT_MODEL = frozenset({"audit", "brief"})
 
@@ -81,6 +91,17 @@ async def run_job(job: queue.Job, sessions: Sessions, handlers: Mapping[str, Han
                 return
             # Replay mode has no reply for this request, and no later attempt will find one.
             outcome = Outcome("validation", f"ReplayMissing: {exc}"[:500])
+        except NotReady as wait:
+            async with sessions.begin() as session:
+                deferred = await queue.defer(session, job, wait.delay_s)
+            log.info(
+                "job_deferred",
+                delay_s=wait.delay_s,
+                reason=wait.reason,
+                stale=not deferred,
+                duration_ms=elapsed_ms(),
+            )
+            return
         except Exception as exc:
             await _infra(job, sessions, exc, elapsed_ms())
             return

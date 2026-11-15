@@ -70,7 +70,7 @@ function Evidence({ item }: { item: Case }) {
       )}
       {item.failed.map((a, i) => (
         <p key={i} className="mt-2 text-red-800">
-          <span className="font-medium">{a.op.replace(/_/g, " ")}</span>
+          <span className="font-medium">{a.op.replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase())}</span>
           {a.path && <Mono className="mx-1">{a.path}</Mono>}: expected <Mono>{readable(a.expected)}</Mono>, got{" "}
           <Mono>{readable(a.actual)}</Mono>
           {a.note && <span className="block text-xs text-red-700">{a.note}</span>}
@@ -245,7 +245,7 @@ function Timeline({ brief }: { brief: BriefData }) {
         <ul className="space-y-1 text-sm">
           {brief.signals.map((s, i) => (
             <li key={i}>
-              <span className="font-medium">{s.kind.replaceAll("_", " ")}</span>
+              <span className="mr-1 rounded-md bg-amber-50 px-2 py-0.5 font-semibold text-amber-800 ring-1 ring-amber-200">{s.kind.replaceAll("_", " ").replace(/^./, (ch) => ch.toUpperCase())}</span>
               {s.detail && <span className="text-neutral-600"> · {s.detail}</span>}
             </li>
           ))}

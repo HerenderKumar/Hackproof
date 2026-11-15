@@ -85,9 +85,20 @@ smoke: env-check runner-image ## Browser smoke test: organiser, team and judge a
 	  -v "$(SMOKE_OUT)":/out -e SMOKE_OUT=/out \
 	  -v "$(CURDIR)/scripts/smoke.py":/smoke/smoke.py:ro --entrypoint python $(RUNNER_IMAGE) /smoke/smoke.py
 
+# The demo event of section 22 (M12): five teams, every job pre-run. Replays the recordings in
+# fixtures/llm (no key, no network for the model); SEED_MODE=record calls the model for what has
+# none and saves it in fixtures/llm/demo/. The worker service is stopped meanwhile (it would take
+# the seed's jobs and date them with the real clock) and started again after, also on failure.
+SEED_MODE ?= replay
+REMOTES := -v "$(CURDIR)/fixtures/remotes":/remotes -e LOCAL_REMOTES_DIR=/remotes
 seed-demo: env-check runner-image ## Create the demo event and pre-run every job
+	mkdir -p fixtures/remotes
 	$(COMPOSE) up -d --wait postgres buildkit
-	$(RUN_WORKER) worker python -m scripts.seed_demo
+	@was=$$($(COMPOSE) ps -q --status running worker); \
+	[ -z "$$was" ] || $(COMPOSE) stop worker; \
+	$(RUN_WORKER) $(RECORDINGS) $(REMOTES) -e LLM_MODE=$(SEED_MODE) worker \
+	  python -m scripts.seed_demo --mode $(SEED_MODE) $(SEED_ARGS); status=$$?; \
+	[ -z "$$was" ] || $(COMPOSE) start worker; exit $$status
 
 runner-image: ## Build the test runner image
 	docker build -f runner/Dockerfile --target runner -t $(RUNNER_IMAGE) .

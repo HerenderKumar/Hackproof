@@ -3,11 +3,11 @@ import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { send } from "@/api";
 import { Button, ErrorNotice, Field, Notice, Section } from "@/components/ui";
-import { keys, useTeam } from "@/queries";
+import { keys, useTeam, useTests } from "@/queries";
 import { isPast, remaining, useNow, when } from "@/time";
-import type { RepoIn, TeamView } from "@/types";
+import type { RepoIn, TeamView, TestsView } from "@/types";
 
-function nextStep(team: TeamView, now: Date): { text: string; to?: string } {
+function nextStep(team: TeamView, now: Date, tests: TestsView | undefined): { text: string; to?: string } {
   const { progress } = team;
   if (isPast(team.event.deadline_at, now)) {
     return progress.has_submitted
@@ -19,8 +19,12 @@ function nextStep(team: TeamView, now: Date): { text: string; to?: string } {
   if (!progress.has_claims) {
     return { text: "Write your problem statement and up to three claims.", to: "/team/claims" };
   }
-  if (progress.tests_total === 0) {
+  const drafting = tests?.drafting;
+  if (drafting === undefined || drafting === "queued" || drafting === "running") {
     return { text: "Your tests are being drafted from your claims. Check the tests page.", to: "/team/tests" };
+  }
+  if (drafting === "failed") {
+    return { text: "Drafting your tests failed. Ask for them again on the tests page.", to: "/team/tests" };
   }
   if (progress.tests_approved < progress.tests_total) {
     const left = progress.tests_total - progress.tests_approved;
@@ -150,9 +154,10 @@ function Repository({ team }: { team: TeamView }) {
 
 export function TeamHome() {
   const team = useTeam();
+  const tests = useTests();
   const now = useNow(team.data?.now);
   if (!team.data) return null; // the Layout shows loading and errors
-  const step = nextStep(team.data, now);
+  const step = nextStep(team.data, now, tests.data);
   return (
     <>
       <Notice tone="info" title="Next step">

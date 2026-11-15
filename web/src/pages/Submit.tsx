@@ -133,9 +133,11 @@ export function Submit() {
             Your claims are saved (<Link to="/team/claims" className="underline">claims</Link>)
           </Need>
           <Need met={needs.tests}>
-            {!drafted
-              ? "Your tests are drafted (still being drafted)"
-              : waiting > 0
+            {view.drafting === "failed"
+              ? "Your tests are drafted (drafting failed: ask for them again)"
+              : !drafted
+                ? "Your tests are drafted (still being drafted)"
+                : waiting > 0
                 ? `Every drafted test is approved (${waiting} waiting)`
                 : "Every drafted test is approved"}{" "}
             (<Link to="/team/tests" className="underline">tests</Link>)

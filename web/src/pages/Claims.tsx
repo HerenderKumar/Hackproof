@@ -84,7 +84,7 @@ function ClaimFields({
   );
 }
 
-function ClaimsForm({ view, ready }: { view: ClaimsView; ready: boolean }) {
+function ClaimsForm({ view, ready, onSaved }: { view: ClaimsView; ready: boolean; onSaved: (version: number) => void }) {
   const queryClient = useQueryClient();
   const current = view.current;
   const [problem, setProblem] = useState(current?.problem_statement ?? "");
@@ -100,6 +100,8 @@ function ClaimsForm({ view, ready }: { view: ClaimsView; ready: boolean }) {
   const save = useMutation({
     mutationFn: (body: ClaimsIn) => send<ClaimsView>("PUT", "/team/claims", body),
     onSuccess: (saved) => {
+      // The parent shows the confirmation: this form is re-made from the saved version.
+      if (saved.current) onSaved(saved.current.version);
       queryClient.setQueryData(keys.claims, saved);
       void queryClient.invalidateQueries({ queryKey: keys.tests });
       void queryClient.invalidateQueries({ queryKey: keys.team });
@@ -175,15 +177,6 @@ function ClaimsForm({ view, ready }: { view: ClaimsView; ready: boolean }) {
       {!locked && (
         <div className="space-y-3">
           <ErrorNotice error={save.error} />
-          {save.isSuccess && (
-            <Notice tone="ok" title={`Saved as version ${save.data.current?.version ?? ""}`}>
-              Your tests are being drafted.{" "}
-              <Link to="/team/tests" className="underline">
-                See them on the tests page
-              </Link>
-              .
-            </Notice>
-          )}
           <div className="flex flex-wrap items-center gap-4">
             <Button type="submit" busy={save.isPending} disabled={disabled || empty || tooLong || view.versions_left === 0}>
               Save and draft tests
@@ -202,6 +195,7 @@ function ClaimsForm({ view, ready }: { view: ClaimsView; ready: boolean }) {
 export function Claims() {
   const claims = useClaims();
   const team = useTeam();
+  const [saved, setSaved] = useState<number | null>(null);
   if (claims.isPending) return <Spinner label="Loading your claims" />;
   if (claims.isError) return <ErrorNotice error={claims.error} />;
   const view = claims.data;
@@ -228,8 +222,17 @@ export function Claims() {
           and drafts every test again.
         </p>
       )}
+      {saved !== null && saved === view.current?.version && (
+        <Notice tone="ok" title={`Saved as version ${saved}`}>
+          Your tests are being drafted.{" "}
+          <Link to="/team/tests" className="underline">
+            See them on the tests page
+          </Link>
+          .
+        </Notice>
+      )}
       {/* A new version re-fills the form from what was saved. */}
-      <ClaimsForm key={view.current?.version ?? 0} view={view} ready={ready} />
+      <ClaimsForm key={view.current?.version ?? 0} view={view} ready={ready} onSaved={setSaved} />
     </>
   );
 }

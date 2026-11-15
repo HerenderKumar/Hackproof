@@ -137,10 +137,45 @@ class SelfCheckStart(BaseModel):
     status: str
 
 
+class RefusalOut(BaseModel):
+    reason: str
+    count: int
+
+
+class ModelUseOut(BaseModel):
+    """What the app used through the model door in this run (Prune design, B4)."""
+
+    calls: int
+    calls_ok: int
+    refused: list[RefusalOut]
+    models: dict[str, int]
+    outside_connections: int
+    outside_refused: int
+    outside_hosts: dict[str, int]
+    receipt_verified: bool | None
+
+    @classmethod
+    def of(cls, use: dict[str, Any] | None) -> "ModelUseOut | None":
+        if not use:
+            return None
+        outside = use.get("outside") or {}
+        return cls(
+            calls=use.get("calls", 0),
+            calls_ok=use.get("calls_ok", 0),
+            refused=[RefusalOut(**r) for r in use.get("refused", [])],
+            models=use.get("models", {}),
+            outside_connections=outside.get("connections", 0),
+            outside_refused=outside.get("refused", 0),
+            outside_hosts=outside.get("hosts", {}),
+            receipt_verified=use.get("receipt_verified"),
+        )
+
+
 class RunOut(BaseModel):
     build_status: str
     startup_status: str
     startup_detail: str | None
+    model_use: ModelUseOut | None = None
 
 
 class ResultOut(BaseModel):

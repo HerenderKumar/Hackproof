@@ -155,7 +155,9 @@ async def test_a_finished_self_check_shows_the_run_and_each_test(
 
     body = response.json()
     assert body["status"] == "done"
-    assert body["run"] == {"build_status": "ok", "startup_status": "ok", "startup_detail": None}
+    assert body["run"] == {
+        "build_status": "ok", "startup_status": "ok", "startup_detail": None, "model_use": None,
+    }  # fmt: skip
     assert body["results"][0].pop("result_id")
     assert body["results"] == [
         {
@@ -268,3 +270,32 @@ async def test_only_the_end_of_a_log_inside_the_artifact_directory_is_served(
     assert len(huge.content) <= 64 * 1024
     lines = huge.text.splitlines()
     assert lines[-1].startswith("0999 ") and all(len(line) == 1000 for line in lines)
+
+
+MODEL_USE = {
+    "door": "prune", "calls": 3, "calls_ok": 2,
+    "refused": [{"reason": "this run's model budget was used up", "count": 1}],
+    "models": {"gpt-4.1-nano": 2}, "tokens": {"prompt_tokens": 20}, "cost_usd": 0.0004,
+    "optimised": False,
+    "outside": {"connections": 4, "refused": 1, "hosts": {"api.weather.test": 4}},
+    "receipt": {"run_id": "r", "steps": [{"n": 1, "model": "gpt-4.1-nano"}]},
+    "receipt_verified": True,
+}  # fmt: skip
+
+
+async def test_a_self_check_shows_what_the_app_used_through_the_model_door(
+    api: Api, clock: FakeClock, sessions: Sessions
+) -> None:
+    flow, snap, spec = await ready(api, clock, sessions)
+    job_id = await started_check(flow, snap.id)
+    await finished_self_check(sessions, job_id, results=[(spec, "p1", "pass")], model_use=MODEL_USE)
+
+    body = (await flow.client.get(f"/api/team/self-checks/{job_id}")).json()
+
+    assert body["run"]["model_use"] == {
+        "calls": 3, "calls_ok": 2,
+        "refused": [{"reason": "this run's model budget was used up", "count": 1}],
+        "models": {"gpt-4.1-nano": 2}, "outside_connections": 4, "outside_refused": 1,
+        "outside_hosts": {"api.weather.test": 4}, "receipt_verified": True,
+    }  # fmt: skip
+    assert "steps" not in str(body["run"]["model_use"])  # the receipt itself is not sent

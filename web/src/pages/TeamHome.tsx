@@ -3,7 +3,7 @@ import { type FormEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { send } from "@/api";
 import { KickoffScan } from "@/components/KickoffScan";
-import { Button, ErrorNotice, Field, Notice, Section } from "@/components/ui";
+import { Button, ErrorNotice, Field, Mono, Notice, Section } from "@/components/ui";
 import { keys, useTeam, useTests } from "@/queries";
 import { isPast, remaining, useNow, when } from "@/time";
 import type { RepoIn, TeamView, TestsView } from "@/types";
@@ -86,6 +86,40 @@ function Rules({ team }: { team: TeamView }) {
           <ErrorNotice error={acknowledge.error} />
         </div>
       )}
+    </Section>
+  );
+}
+
+/** What the app may reach during HackProof's runs, when the model door is on (Prune design). */
+function ModelDoor({ team }: { team: TeamView }) {
+  const door = team.model_door;
+  if (!door) return null;
+  return (
+    <Section title="Models and outside calls during runs">
+      <p className="text-sm text-neutral-700">
+        During self-checks and the final run your app has no internet, except through HackProof's model door. It may
+        call these models through Prune: <Mono>{door.models.join(", ")}</Mono>. Use the stock OpenAI or Anthropic
+        SDK with no key of your own: HackProof sets <Mono>OPENAI_BASE_URL</Mono>, <Mono>OPENAI_API_KEY</Mono>,{" "}
+        <Mono>ANTHROPIC_BASE_URL</Mono> and <Mono>ANTHROPIC_API_KEY</Mono> for each run, and lists the models in{" "}
+        <Mono>HP_MODELS</Mono>.
+      </p>
+      <p className="text-sm text-neutral-700">
+        Each run may spend up to ${door.run_budget_usd.toFixed(2)} in at most {door.max_calls} model calls. Prune
+        refuses calls past that, and blocks calls that carry secrets or personal data or ask for a tool the event
+        does not allow; the app gets the refusal as an error. Prune's cache and cheaper-model routing are off, so
+        every call reaches the model you named.
+      </p>
+      {door.outside_hosts.length > 0 ? (
+        <p className="text-sm text-neutral-700">
+          Your app may also call these outside hosts over HTTPS: <Mono>{door.outside_hosts.join(", ")}</Mono>.
+          HackProof sets <Mono>HTTPS_PROXY</Mono> for each run; anything else is refused.
+        </p>
+      ) : (
+        <p className="text-sm text-neutral-700">No outside host is open in this event.</p>
+      )}
+      <p className="text-xs text-neutral-500">
+        How many calls your app made is shown with each self-check and to the judges. It never changes a verdict.
+      </p>
     </Section>
   );
 }
@@ -179,6 +213,7 @@ export function TeamHome() {
       </Section>
       <Rules team={team.data} />
       <Repository team={team.data} />
+      <ModelDoor team={team.data} />
       <KickoffScan serverNow={team.data.now} />
     </>
   );

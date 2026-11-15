@@ -247,6 +247,15 @@ class TeamProgress(BaseModel):
     has_submitted: bool
 
 
+class ModelDoorTerms(BaseModel):
+    """What a team's app may use during HackProof's runs (Prune design, B4; D-063)."""
+
+    models: list[str]
+    run_budget_usd: float
+    max_calls: int
+    outside_hosts: list[str]
+
+
 class TeamView(BaseModel):
     id: uuid.UUID
     name: str
@@ -257,3 +266,4 @@ class TeamView(BaseModel):
     suggested_repo_url: str | None
     health_path: str
     progress: TeamProgress
+    model_door: ModelDoorTerms | None = None  # None: the app has no way out during runs

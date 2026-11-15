@@ -87,6 +87,15 @@ export type Brief = {
     startup_status: string | null;
     startup_detail: string | null;
     image_digest: string | null;
+    model_use?: {
+      calls: number;
+      calls_ok: number;
+      refused: { reason: string; count: number }[];
+      models: Record<string, number>;
+      outside_hosts: Record<string, number>;
+      outside_refused: number;
+      receipt_verified: boolean | null;
+    } | null;
   };
   claims: BriefClaim[];
   audit: {

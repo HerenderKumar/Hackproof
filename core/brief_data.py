@@ -158,6 +158,21 @@ def _case(row: models.TestResult, kind: str = "api") -> dict[str, Any]:
     }
 
 
+def _model_use(use: Any) -> dict[str, Any] | None:
+    if not isinstance(use, dict):
+        return None
+    outside = use.get("outside") or {}
+    return {
+        "calls": use.get("calls", 0),
+        "calls_ok": use.get("calls_ok", 0),
+        "refused": use.get("refused", []),
+        "models": use.get("models", {}),
+        "outside_hosts": outside.get("hosts", {}),
+        "outside_refused": outside.get("refused", 0),
+        "receipt_verified": use.get("receipt_verified"),
+    }
+
+
 async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, Any] | None:
     submission = await session.get(models.Submission, submission_id)
     if submission is None:
@@ -314,6 +329,8 @@ async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, An
             "startup_status": run_row.startup_status if run_row is not None else None,
             "startup_detail": run_row.startup_detail if run_row is not None else None,
             "image_digest": run_row.image_digest if run_row is not None else None,
+            # The model door's summary (Prune design): context for a question, never a verdict.
+            "model_use": _model_use(run_row.model_use) if run_row is not None else None,
         },
         "claims": claim_cards,
         "audit": {

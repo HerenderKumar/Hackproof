@@ -8,12 +8,13 @@ from sqlalchemy import func, select
 from api.deps import Db, TeamUser
 from api.errors import api_error
 from api.routers.team_tests import tests_view
-from api.schemas import RepoIn, TeamEvent, TeamProgress, TeamRepo, TeamView
+from api.schemas import ModelDoorTerms, RepoIn, TeamEvent, TeamProgress, TeamRepo, TeamView
 from api.team_common import own_team
 from core.db import models
 from core.errors import InfraError
 from core.events import claims_lock_at
 from core.repo import InvalidRepoUrl, RepoNotFound, RepoProvider
+from core.settings import Settings
 
 router = APIRouter(prefix="/api", tags=["team"])
 
@@ -38,7 +39,9 @@ async def _progress(db: Db, team: models.Team) -> TeamProgress:
     )
 
 
-async def _view(db: Db, team: models.Team, event: models.Event, now: datetime) -> TeamView:
+async def _view(
+    db: Db, team: models.Team, event: models.Event, now: datetime, settings: Settings
+) -> TeamView:
     repo = None
     if team.registered_at is not None:
         repo = TeamRepo(
@@ -65,13 +68,25 @@ async def _view(db: Db, team: models.Team, event: models.Event, now: datetime) -
         suggested_repo_url=None if repo else team.repo_url,
         health_path=team.health_path,
         progress=await _progress(db, team),
+        model_door=door_terms(settings),
+    )
+
+
+def door_terms(settings: Settings) -> ModelDoorTerms | None:
+    if settings.model_door != "prune":
+        return None
+    return ModelDoorTerms(
+        models=list(settings.door_model_list),
+        run_budget_usd=settings.door_run_budget_usd,
+        max_calls=settings.door_max_calls,
+        outside_hosts=list(settings.door_egress_host_list),
     )
 
 
 @router.get("/team")
 async def read_team(session: TeamUser, request: Request, db: Db) -> TeamView:
     team, event = await own_team(db, session)
-    return await _view(db, team, event, request.app.state.clock.now())
+    return await _view(db, team, event, request.app.state.clock.now(), request.app.state.settings)
 
 
 @router.post("/team/rules-ack")
@@ -81,7 +96,7 @@ async def acknowledge_rules(session: TeamUser, request: Request, db: Db) -> Team
     if team.rules_acknowledged_at is None:
         team.rules_acknowledged_at = now
         await db.commit()
-    return await _view(db, team, event, now)
+    return await _view(db, team, event, now, request.app.state.settings)
 
 
 @router.post("/team/repo")
@@ -134,4 +149,4 @@ async def register_repo(body: RepoIn, session: TeamUser, request: Request, db: D
     if body.health_path is not None:
         team.health_path = body.health_path
     await db.commit()
-    return await _view(db, team, event, now)
+    return await _view(db, team, event, now, request.app.state.settings)

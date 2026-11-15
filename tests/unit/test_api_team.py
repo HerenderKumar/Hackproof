@@ -1,6 +1,7 @@
 """The team's own pages: rules acknowledgement and repository registration (section 5.2)."""
 
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -9,7 +10,7 @@ from sqlalchemy import text
 
 from core.errors import InfraError
 from core.repo import InvalidRepoUrl
-from tests.api_helpers import Api
+from tests.api_helpers import Api, make_app
 from tests.factories import T0, make_submission
 from tests.fakes import FakeClock, FakeRepoProvider
 from tests.helpers import Sessions
@@ -283,3 +284,31 @@ async def test_the_overview_counts_the_teams_progress(
         "has_submitted": True,
     }
     assert theirs == EMPTY_PROGRESS
+
+
+async def test_the_overview_states_the_model_door_s_terms_when_it_is_on(
+    api: Api,
+    clock: FakeClock,
+    repos: FakeRepoProvider,
+    migrated_database_url: str,
+    tmp_path: Path,
+) -> None:
+    flow = await started(api, clock)
+    assert (await flow.client.get("/api/team")).json()["model_door"] is None
+
+    app = make_app(
+        migrated_database_url, tmp_path, clock, repos,
+        model_door="prune", door_models="gpt-4.1-nano,claude-haiku-4-5", door_max_calls=20,
+        door_egress_hosts="api.weather.test",
+    )  # fmt: skip
+    on = Api(app)
+    try:
+        flow = await started(on, clock, name="Door team")
+        assert (await flow.client.get("/api/team")).json()["model_door"] == {
+            "models": ["gpt-4.1-nano", "claude-haiku-4-5"], "run_budget_usd": 0.05,
+            "max_calls": 20, "outside_hosts": ["api.weather.test"],
+        }  # fmt: skip
+        assert "prune_" not in (await flow.client.get("/api/team")).text
+    finally:
+        await on.aclose()
+        await app.state.engine.dispose()

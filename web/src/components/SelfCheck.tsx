@@ -6,7 +6,7 @@ import { Button, ErrorNotice, Field, Mono, Notice, Section, Spinner, StateBadge 
 import { CaseVideo, PageDetails, TraceLink, UiSteps } from "@/components/UiEvidence";
 import { keys, POLL_MS, useSnapshots } from "@/queries";
 import { when } from "@/time";
-import type { ResultOut, SelfCheckStart, SelfCheckView, SnapshotRequest, TestsView } from "@/types";
+import type { ModelUseOut, ResultOut, SelfCheckStart, SelfCheckView, SnapshotRequest, TestsView } from "@/types";
 
 const ACTIVE = "hp:self-check"; // the self-check being watched, kept across reloads of this tab
 
@@ -201,6 +201,7 @@ function Result({ jobId, claims, onGone }: { jobId: string; claims: TestsView | 
           )}
         </div>
       </dl>
+      {run.model_use && <ModelUse use={run.model_use} />}
       <ul className="space-y-3">
         {Object.entries(view.claim_verdicts).map(([claimId, verdict]) => (
           <li key={claimId} className="rounded-md border border-neutral-200 px-3 py-2">
@@ -313,5 +314,47 @@ export function SelfCheck({ tests }: { tests: TestsView | undefined }) {
         </div>
       )}
     </Section>
+  );
+}
+
+/** The app's calls through the model door: counts and refusals in words, never a verdict. */
+function ModelUse({ use }: { use: ModelUseOut }) {
+  const models = Object.entries(use.models)
+    .map(([model, n]) => `${model} (${n})`)
+    .join(", ");
+  const hosts = Object.entries(use.outside_hosts)
+    .map(([host, n]) => `${host} (${n})`)
+    .join(", ");
+  return (
+    <div className="rounded-md border border-neutral-200 px-3 py-2 text-sm">
+      <p className="text-xs uppercase tracking-wide text-neutral-500">Model calls</p>
+      <p>
+        {use.calls === 0
+          ? "The app made no model calls in this run."
+          : `The app made ${use.calls} model ${use.calls === 1 ? "call" : "calls"} through Prune, ${use.calls_ok} answered${
+              models ? `: ${models}` : ""
+            }.`}
+      </p>
+      {(use.outside_connections > 0 || use.outside_refused > 0) && (
+        <p>
+          Outside calls: {use.outside_connections}
+          {hosts && ` (${hosts})`}
+          {use.outside_refused > 0 && `, ${use.outside_refused} refused`}.
+        </p>
+      )}
+      {use.refused.length > 0 && (
+        <ul className="mt-1 list-disc pl-5 text-xs text-neutral-700">
+          {use.refused.map((r) => (
+            <li key={r.reason}>
+              {r.reason}
+              {r.count > 1 && ` (${r.count} times)`}
+            </li>
+          ))}
+        </ul>
+      )}
+      {use.receipt_verified === false && (
+        <p className="mt-1 text-xs text-neutral-500">Prune's receipt for this run could not be checked.</p>
+      )}
+    </div>
   );
 }

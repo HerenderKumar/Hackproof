@@ -38,6 +38,15 @@ export interface TeamView {
   suggested_repo_url: string | null;
   health_path: string;
   progress: TeamProgress;
+  model_door: ModelDoorTerms | null;
+}
+
+/** What a team's app may use during HackProof's runs (Prune design). */
+export interface ModelDoorTerms {
+  models: string[];
+  run_budget_usd: number;
+  max_calls: number;
+  outside_hosts: string[];
 }
 
 export interface RepoIn {
@@ -186,6 +195,19 @@ export interface RunOut {
   build_status: string;
   startup_status: string;
   startup_detail: string | null;
+  model_use: ModelUseOut | null;
+}
+
+/** What the app used through the model door in one run. */
+export interface ModelUseOut {
+  calls: number;
+  calls_ok: number;
+  refused: { reason: string; count: number }[];
+  models: Record<string, number>;
+  outside_connections: number;
+  outside_refused: number;
+  outside_hosts: Record<string, number>;
+  receipt_verified: boolean | null;
 }
 
 export interface AssertionResult {

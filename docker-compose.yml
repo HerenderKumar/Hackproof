@@ -10,6 +10,13 @@ x-shared-env: &shared-env
   REPO_PROVIDER: ${REPO_PROVIDER:-github}
   LOCAL_REMOTES_DIR: /app/fixtures/remotes
   RAILPACK_VERSION: ${RAILPACK_VERSION:-0.43.0}
+  # The model door's terms (Prune design, D-063): the API shows them to teams, the worker sets
+  # them on each run's door. The Prune key itself reaches the worker only.
+  MODEL_DOOR: ${MODEL_DOOR:-off}
+  DOOR_MODELS: ${DOOR_MODELS:-gpt-4.1-nano,gpt-4o-mini,gpt-5-nano,claude-haiku-4-5}
+  DOOR_RUN_BUDGET_USD: ${DOOR_RUN_BUDGET_USD:-0.05}
+  DOOR_MAX_CALLS: ${DOOR_MAX_CALLS:-20}
+  DOOR_EGRESS_HOSTS: ${DOOR_EGRESS_HOSTS:-}
   RUNNER_VERSION: ${RUNNER_VERSION:-1}
   LINK_TTL_DAYS: ${LINK_TTL_DAYS:-7}
   MAX_CLAIMS_VERSIONS: ${MAX_CLAIMS_VERSIONS:-20}
@@ -123,6 +130,9 @@ services:
       MATCH_CONTEXT_LINES: ${MATCH_CONTEXT_LINES:-5}
       EMBEDDINGS: ${EMBEDDINGS:-on}
       RELATED_MIN_SCORE: ${RELATED_MIN_SCORE:-0.70}
+      PRUNE_API_KEY: ${PRUNE_API_KEY:-}
+      PRUNE_BASE_URL: ${PRUNE_BASE_URL:-https://api.withprune.com}
+      DOOR_IMAGE: ${DOOR_IMAGE:-hackproof-door:1}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and outside, so bind-mount paths the worker gives Docker resolve on the host.

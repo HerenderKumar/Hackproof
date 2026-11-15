@@ -21,6 +21,7 @@ from api.deps import Db, TeamUser
 from api.errors import api_error
 from api.team_common import own_team, require_before_deadline
 from api.team_schemas import (
+    ModelUseOut,
     PendingCommit,
     ResultOut,
     RunOut,
@@ -292,6 +293,7 @@ async def read_self_check(job_id: uuid.UUID, session: TeamUser, db: Db) -> SelfC
             build_status=run.build_status,
             startup_status=run.startup_status,
             startup_detail=run.startup_detail,
+            model_use=ModelUseOut.of(run.model_use),
         ),
         results=results,
         claim_verdicts=dict(claim_verdicts(claim_ids, pairs)),

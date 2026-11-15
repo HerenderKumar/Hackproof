@@ -408,6 +408,25 @@ export function Brief() {
           )}
           .
         </p>
+        {b.run.model_use && (
+          <p className="mt-1 text-xs text-neutral-600">
+            {b.run.model_use.calls === 0
+              ? "The app made no model calls during the final run."
+              : `The app made ${b.run.model_use.calls} model ${b.run.model_use.calls === 1 ? "call" : "calls"} through Prune during the final run (${Object.entries(
+                  b.run.model_use.models,
+                )
+                  .map(([m, n]) => `${m} ${n}`)
+                  .join(", ") || "none answered"}).`}
+            {Object.keys(b.run.model_use.outside_hosts).length > 0 &&
+              ` It called outside hosts: ${Object.entries(b.run.model_use.outside_hosts)
+                .map(([h, n]) => `${h} ${n}`)
+                .join(", ")}.`}
+            {b.run.model_use.refused.length > 0 &&
+              ` Refused: ${b.run.model_use.refused.map((r) => r.reason).join("; ")}.`}
+            {b.run.model_use.receipt_verified === false && " Prune's receipt could not be checked."} Context, not a
+            verdict.
+          </p>
+        )}
       </header>
       {aiProblem && (
         <Notice tone="warn" title="Part of the AI analysis is missing">

@@ -234,6 +234,7 @@ async def finished_self_check(
     startup: str = "ok",
     startup_detail: str | None = None,
     logs: dict[str, Path] | None = None,
+    model_use: dict[str, Any] | None = None,
 ) -> None:
     """What the worker leaves after running a job: its run, one result per (test, case, verdict)
     under the attempt that ran, and the job done."""
@@ -255,6 +256,7 @@ async def finished_self_check(
                 build_status=build,
                 startup_status=startup,
                 startup_detail=startup_detail,
+                model_use=model_use,
                 build_log_path=str(logs["build"]) if "build" in logs else None,
                 app_log_path=str(logs["app"]) if "app" in logs else None,
                 started_at=datetime.now(UTC),

@@ -1,6 +1,7 @@
 """A `Baseline` over a dictionary of path to text, for the comparison's tests."""
 
 import hashlib
+import random
 from collections.abc import Collection, Mapping
 from pathlib import PurePosixPath
 
@@ -65,3 +66,37 @@ def source(path: str, text: str) -> SourceFile:
 
 def nobody(hashes: Collection[int]) -> Mapping[int, int]:
     return {}
+
+
+def block(seed: int, lines: int = 12) -> str:
+    """A function of distinct-looking JavaScript, about 20 tokens a line.
+
+    Names, strings and numbers all become one symbol, so only operators and keywords tell two
+    blocks apart. Each line opens with four random operators and its statement is at most 14
+    symbols, so any 25 symbols in a row cross some line's operators: two unrelated blocks share
+    such a stretch about once in a thousand pairs, and the tests' seeds share none.
+    """
+    rng = random.Random(seed)
+    names = ["total", "count", "price", "items", "share", "rest", "sum", "value", "index"]
+    ops = ["+", "-", "*", "/", "%", "&", "|", "^"]
+    body = []
+    for n in range(lines):
+        a, b = rng.choice(names), rng.choice(names)
+        o1, o2, o3, o4, op = (rng.choice(ops) for _ in range(5))
+        cmp = rng.choice(["<", ">", "==", "!="])
+        mix = f"mix {o1}= {a} {o2} {b} {o3} {n} {o4} {a};"
+        shape = rng.randrange(6)
+        if shape == 0:
+            statement = f"if ({a} {cmp} {n}) {{ {b}--; }}"
+        elif shape == 1:
+            statement = f"{a}{n} = ({b} {op} {rng.randint(1, 9)}) * {a};"
+        elif shape == 2:
+            statement = f"for (const x of {a}) {b}.push(x);"
+        elif shape == 3:
+            statement = f"return {a}.{b}[{n}];"
+        elif shape == 4:
+            statement = f"while ({a} {cmp} {b}) {a} = {b} {op} {n};"
+        else:
+            statement = f'console.log("{a}", {b});'
+        body.append(f"  {mix} {statement}")
+    return f"function f{seed}(" + ", ".join(names[:3]) + ") {\n" + "\n".join(body) + "\n}\n"

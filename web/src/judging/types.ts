@@ -94,9 +94,13 @@ export type Brief = {
     kind: string;
     observed_at: string;
     head_sha: string | null;
+    previous_head_sha: string | null;
     lines_added: number | null;
     lines_total: number | null;
+    descends_from_previous: boolean | null;
   }[];
+  growth: { observed_at: string; lines: number }[];
+  kickoff_at: string;
   signals: Signal[];
   reuse_declaration: Record<string, unknown>;
   written: {
@@ -147,6 +151,7 @@ export type Dashboard = {
     rules_acknowledged: boolean;
     claims_version: number | null;
     last_observed_at: string | null;
+    last_polled_at: string | null;
     submission: {
       id: string;
       submitted_at: string;

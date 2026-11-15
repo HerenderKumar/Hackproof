@@ -3,6 +3,7 @@ event, and marks and scores are theirs alone until the organiser locks them."""
 
 import csv
 import io
+import uuid
 from datetime import timedelta
 from typing import Any
 
@@ -225,3 +226,46 @@ async def test_the_organiser_spot_checks_a_teams_tests_with_the_hidden_cases(
     assert (await r.judge.get(url)).status_code == 403
     missing = await r.organiser.get(f"/api/teams/{r.event['id']}/specs")
     assert missing.status_code == 404
+
+
+async def test_the_brief_shows_the_repo_watch_as_context(api: Api, sessions: Sessions) -> None:
+    """Signals, growth and the push log reach the brief; the verdicts stay what the tests gave."""
+    r = await room(api, sessions, written=WRITTEN)
+    async with sessions.begin() as s:
+        event = await s.get(models.Event, uuid.UUID(r.event["id"]))
+        assert event is not None
+        kickoff = event.kickoff_at
+        team_id = uuid.UUID(r.team["id"])
+        early = {"sha": "b" * 40, "author_date": (kickoff - timedelta(days=9)).isoformat()}
+        s.add_all(
+            [
+                models.RepoObservation(
+                    team_id=team_id, kind="kickoff", observed_at=kickoff, head_sha="a" * 40,
+                    lines_total=12, commits=[],
+                ),
+                models.RepoObservation(
+                    team_id=team_id, kind="poll", observed_at=kickoff + timedelta(minutes=5),
+                    head_sha="b" * 40, previous_head_sha="a" * 40, descends_from_previous=True,
+                    lines_added=3000, files_changed=1, commits=[early],
+                ),
+            ]
+        )  # fmt: skip
+        s.add(
+            models.Job(
+                kind="poll_repo", lane="watch", priority=80, status="done", team_id=team_id,
+                idempotency_key="poll:x", finished_at=kickoff + timedelta(minutes=10),
+            )
+        )  # fmt: skip
+
+    brief = (await r.judge.get(r.brief_url)).json()
+
+    assert [s["kind"] for s in brief["signals"]] == ["bulk_first_push", "commits_before_kickoff"]
+    assert "3000 lines" in brief["signals"][0]["detail"]
+    assert "self-reported" in brief["signals"][1]["detail"]
+    assert [g["lines"] for g in brief["growth"]] == [12, 3012]
+    assert [o["head_sha"] for o in brief["observations"]] == ["a" * 40, "b" * 40]
+    assert [c["verdict"] for c in brief["claims"]] == ["fail", "pass"]
+
+    board = (await r.organiser.get(f"/api/events/{r.event['id']}/dashboard")).json()
+    [row] = board["teams"]
+    assert row["last_polled_at"] == (kickoff + timedelta(minutes=10)).isoformat()

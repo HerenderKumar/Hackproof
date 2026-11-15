@@ -78,7 +78,10 @@ function Teams({ board }: { board: Dashboard }) {
                       <span className="text-xs text-amber-700">not registered</span>
                     )}
                   </td>
-                  <td className="px-2 py-2 text-xs">{t.last_observed_at ? when(t.last_observed_at) : "—"}</td>
+                  <td className="px-2 py-2 text-xs">
+                    {t.last_polled_at ? when(t.last_polled_at) : "—"}
+                    {t.last_observed_at && <span className="block text-neutral-500">head changed {when(t.last_observed_at)}</span>}
+                  </td>
                   <td className="px-2 py-2 text-xs">{t.claims_version ? `v${t.claims_version}` : "—"}</td>
                   <td className="px-2 py-2 text-xs">{t.submission ? when(t.submission.submitted_at) : "—"}</td>
                   <td className="px-2 py-2 text-xs">

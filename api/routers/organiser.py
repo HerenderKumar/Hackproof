@@ -69,6 +69,14 @@ async def dashboard(event_id: uuid.UUID, _: Organiser, db: Db) -> dict[str, Any]
                 models.RepoObservation.team_id == team.id
             )
         )
+        # An unchanged head writes no observation, so the last poll is the newest done job.
+        last_polled = await db.scalar(
+            select(func.max(models.Job.finished_at)).where(
+                models.Job.team_id == team.id,
+                models.Job.kind == "poll_repo",
+                models.Job.status == "done",
+            )
+        )
         submission = await judged_submission(db, team, event)
         row: dict[str, Any] = {
             "id": str(team.id),
@@ -78,6 +86,7 @@ async def dashboard(event_id: uuid.UUID, _: Organiser, db: Db) -> dict[str, Any]
             "rules_acknowledged": team.rules_acknowledged_at is not None,
             "claims_version": claims_version,
             "last_observed_at": last_seen.isoformat() if last_seen is not None else None,
+            "last_polled_at": last_polled.isoformat() if last_polled is not None else None,
             "submission": None,
         }
         if submission is not None:

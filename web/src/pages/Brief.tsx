@@ -191,10 +191,9 @@ function QuestionItem({ q }: { q: Question }) {
 }
 
 function Timeline({ brief }: { brief: BriefData }) {
-  const points = brief.observations
-    .filter((o) => o.lines_total !== null)
-    .map((o) => ({ t: new Date(o.observed_at).getTime(), lines: o.lines_total ?? 0 }));
-  const kickoff = brief.observations.find((o) => o.kind === "kickoff");
+  const points = brief.growth.map((g) => ({ t: new Date(g.observed_at).getTime(), lines: g.lines }));
+  const kickoff = new Date(brief.kickoff_at).getTime();
+  if (points.length > 0 && (points[0]?.t ?? 0) > kickoff) points.unshift({ t: kickoff, lines: 0 });
   return (
     <Section title="Build timeline" aside={<span className="text-xs text-neutral-500">Context for questions, not a verdict</span>}>
       {points.length > 1 ? (
@@ -211,7 +210,7 @@ function Timeline({ brief }: { brief: BriefData }) {
               />
               <YAxis fontSize={11} width={44} />
               <Tooltip labelFormatter={(t) => when(new Date(Number(t)).toISOString())} />
-              {kickoff && <ReferenceLine x={new Date(kickoff.observed_at).getTime()} stroke="#4f46e5" label="kickoff" />}
+              <ReferenceLine x={kickoff} stroke="#4f46e5" label="kickoff" />
               <Line type="stepAfter" dataKey="lines" stroke="#4f46e5" dot={false} name="lines of code" />
             </LineChart>
           </ResponsiveContainer>
@@ -230,6 +229,22 @@ function Timeline({ brief }: { brief: BriefData }) {
         </ul>
       ) : (
         <p className="text-sm text-neutral-600">No prior-work signals.</p>
+      )}
+      {brief.observations.length > 0 && (
+        <details className="text-sm">
+          <summary className="cursor-pointer text-neutral-700">Push log ({brief.observations.length} heads seen)</summary>
+          <ul className="mt-1 space-y-0.5 font-mono text-xs text-neutral-700">
+            {brief.observations.map((o, i) => (
+              <li key={i}>
+                {when(o.observed_at)} · {o.kind.replaceAll("_", " ")} · {o.head_sha ? o.head_sha.slice(0, 7) : "no commit"}
+                {o.kind === "poll" && o.lines_added !== null && ` · +${o.lines_added} lines`}
+                {o.descends_from_previous === false && (
+                  <span className="text-amber-700"> · replaced {o.previous_head_sha ? o.previous_head_sha.slice(0, 7) : "none"}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
     </Section>
   );

@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.claims import claim_fields
 from core.db import models
 from core.results import current_test_results, final_run_job, submission_verdicts
+from core.signals import describe, growth, signals
 
 BODY_CHARS = 2000
 
@@ -191,21 +192,44 @@ async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, An
             }
         )
 
-    observed = await session.scalars(
-        select(models.RepoObservation)
-        .where(models.RepoObservation.team_id == team.id)
-        .order_by(models.RepoObservation.observed_at)
+    observed = list(
+        await session.scalars(
+            select(models.RepoObservation)
+            .where(models.RepoObservation.team_id == team.id)
+            .order_by(models.RepoObservation.observed_at, models.RepoObservation.id)
+        )
     )
     observations = [
         {
             "kind": o.kind,
             "observed_at": o.observed_at.isoformat(),
             "head_sha": o.head_sha,
+            "previous_head_sha": o.previous_head_sha,
             "lines_added": o.lines_added,
             "lines_total": o.lines_total,
             "descends_from_previous": o.descends_from_previous,
         }
         for o in observed
+    ]
+    # Context for a judge's questions, never a verdict (invariant 5): nothing reads these back
+    # into a score or a test result.
+    found_signals = [
+        {
+            "kind": signal.name,
+            "detail": describe(signal),
+            "observed_at": signal.detail.get("observed_at"),
+            "facts": signal.detail,
+        }
+        for signal in signals(
+            kickoff_at=event.kickoff_at,
+            bulk_push_lines=event.bulk_push_lines,
+            bulk_push_window_minutes=event.bulk_push_window_minutes,
+            repo_created_at=team.repo_created_at,
+            observations=observed,
+        )
+    ]
+    growth_points = [
+        {"observed_at": when.isoformat(), "lines": lines} for when, lines in growth(observed)
     ]
 
     audit_status = job_state(audit_job)
@@ -248,6 +272,8 @@ async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, An
             "code_map_status": audit.code_map_status if audit is not None else None,
         },
         "observations": observations,
-        "signals": [],
+        "growth": growth_points,
+        "kickoff_at": event.kickoff_at.isoformat(),
+        "signals": found_signals,
         "reuse_declaration": submission.reuse_declaration,
     }

@@ -20,7 +20,7 @@ import asyncio
 import hashlib
 import json
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -65,6 +65,24 @@ class Tool[T: BaseModel]:
                 "parameters": self.schema.model_json_schema(),
             },
         }
+
+
+@dataclass(frozen=True)
+class ToolCall:
+    id: str
+    name: str
+    arguments: str  # as the model sent it: JSON text, not yet parsed
+
+
+@dataclass(frozen=True)
+class StepReply:
+    """One turn of a conversation: the assistant message to append, and the calls it makes."""
+
+    message: dict[str, Any]
+    calls: tuple[ToolCall, ...]
+    finish: str | None
+    prompt_tokens: int
+    completion_tokens: int
 
 
 def request_key(body: dict[str, Any]) -> str:
@@ -181,41 +199,86 @@ class LLMClient:
         ok = False
         try:
             reply = await self._transport(body)
-            reported = reply.get("usage")
-            if isinstance(reported, dict):
-                usage = reported
+            usage = _usage(reply)
             value = _parse(reply, tool)
             ok = True
             return value
         except ReplayMissing as exc:
             raise ReplayMissing(f"{purpose}: {exc}") from None
         finally:
-            duration_ms = int((time.monotonic() - started) * 1000)
-            input_tokens = _int(usage.get("prompt_tokens"))
-            output_tokens = _int(usage.get("completion_tokens"))
-            log.info(
-                "llm_call",
-                purpose=purpose,
-                model=model,
-                ok=ok,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost=usage.get("cost"),
-                duration_ms=duration_ms,
-            )
-            if self._sessions is not None:
-                async with self._sessions.begin() as session:
-                    session.add(
-                        models.LlmCall(
-                            job_id=job_id,
-                            purpose=purpose,
-                            model=model,
-                            input_tokens=input_tokens,
-                            output_tokens=output_tokens,
-                            duration_ms=duration_ms,
-                            ok=ok,
-                        )
+            await self._record(purpose, model, ok, usage, started, job_id)
+
+    async def step(
+        self,
+        *,
+        purpose: str,
+        model: str,
+        messages: Sequence[dict[str, Any]],
+        tools: Sequence[Tool[Any]],
+        max_tokens: int,
+        job_id: UUID | None = None,
+    ) -> StepReply:
+        """One request of a conversation with several tools (the audit's loop, section 15.2).
+
+        The reply may call any number of the tools, or none; the caller runs them and sends their
+        results back in the next step's messages.
+        """
+        body = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "messages": list(messages),
+            "tools": [tool.definition() for tool in tools],
+            "tool_choice": "auto",
+        }
+        started = time.monotonic()
+        usage: dict[str, Any] = {}
+        ok = False
+        try:
+            reply = await self._transport(body)
+            usage = _usage(reply)
+            step = _step_reply(reply, usage)
+            ok = True
+            return step
+        except ReplayMissing as exc:
+            raise ReplayMissing(f"{purpose}: {exc}") from None
+        finally:
+            await self._record(purpose, model, ok, usage, started, job_id)
+
+    async def _record(
+        self,
+        purpose: str,
+        model: str,
+        ok: bool,
+        usage: dict[str, Any],
+        started: float,
+        job_id: UUID | None,
+    ) -> None:
+        duration_ms = int((time.monotonic() - started) * 1000)
+        input_tokens = _int(usage.get("prompt_tokens"))
+        output_tokens = _int(usage.get("completion_tokens"))
+        log.info(
+            "llm_call",
+            purpose=purpose,
+            model=model,
+            ok=ok,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cost=usage.get("cost"),
+            duration_ms=duration_ms,
+        )
+        if self._sessions is not None:
+            async with self._sessions.begin() as session:
+                session.add(
+                    models.LlmCall(
+                        job_id=job_id,
+                        purpose=purpose,
+                        model=model,
+                        input_tokens=input_tokens,
+                        output_tokens=output_tokens,
+                        duration_ms=duration_ms,
+                        ok=ok,
                     )
+                )
 
 
 def make_transport(settings: Settings) -> Transport:
@@ -238,7 +301,21 @@ def make_llm_client(
 # --- parsing -------------------------------------------------------------------------------------
 
 
-def _parse[T: BaseModel](reply: dict[str, Any], tool: Tool[T]) -> T:
+def parse_arguments[T: BaseModel](call: ToolCall, tool: Tool[T]) -> T:
+    """A call's arguments as the tool's model. Raises `LLMOutputError`, in words for the model."""
+    try:
+        data = json.loads(call.arguments)
+    except json.JSONDecodeError as exc:
+        raise LLMOutputError(f"the {tool.name} arguments were not valid JSON: {exc}") from None
+    return _validate(data, tool)
+
+
+def _usage(reply: dict[str, Any]) -> dict[str, Any]:
+    reported = reply.get("usage")
+    return reported if isinstance(reported, dict) else {}
+
+
+def _choice(reply: dict[str, Any]) -> tuple[dict[str, Any], Any]:
     choices = reply.get("choices")
     if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
         raise InfraError("the model gateway's reply had no choices")
@@ -246,7 +323,58 @@ def _parse[T: BaseModel](reply: dict[str, Any], tool: Tool[T]) -> T:
     message = choice.get("message")
     if not isinstance(message, dict):
         raise InfraError("the model gateway's reply had no message")
-    finish = choice.get("finish_reason")
+    return message, choice.get("finish_reason")
+
+
+def _step_reply(reply: dict[str, Any], usage: dict[str, Any]) -> StepReply:
+    message, finish = _choice(reply)
+    raw = message.get("tool_calls")
+    entries = raw if isinstance(raw, list) else []
+    calls: list[ToolCall] = []
+    for n, entry in enumerate(entries, start=1):
+        if not isinstance(entry, dict) or not _is_call(entry.get("function")):
+            continue
+        function = entry["function"]
+        arguments = function.get("arguments")
+        text = arguments if isinstance(arguments, str) else json.dumps(arguments)
+        call_id = entry.get("id")
+        calls.append(ToolCall(call_id if isinstance(call_id, str) else f"call_{n}",
+                              function["name"], text))  # fmt: skip
+    if not calls and finish == "length":
+        raise LLMOutputError("the reply was cut off at max_tokens before it called a tool")
+    if not calls and finish in ("content_filter", "refusal"):
+        raise LLMOutputError("the model declined to answer")
+    content = message.get("content")
+    assistant: dict[str, Any] = {
+        "role": "assistant",
+        "content": content if isinstance(content, str) else None,
+    }
+    if calls:
+        assistant["tool_calls"] = [
+            {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}
+            for c in calls
+        ]
+    return StepReply(
+        message=assistant,
+        calls=tuple(calls),
+        finish=finish if isinstance(finish, str) else None,
+        prompt_tokens=_int(usage.get("prompt_tokens")) or 0,
+        completion_tokens=_int(usage.get("completion_tokens")) or 0,
+    )
+
+
+def _validate[T: BaseModel](data: Any, tool: Tool[T]) -> T:
+    try:
+        return tool.schema.model_validate(data)
+    except ValidationError as exc:
+        detail = str(exc)[:_DETAIL_LIMIT]
+        raise LLMOutputError(
+            f"the {tool.name} arguments did not match its schema: {detail}"
+        ) from None
+
+
+def _parse[T: BaseModel](reply: dict[str, Any], tool: Tool[T]) -> T:
+    message, finish = _choice(reply)
     if finish == "length":
         raise LLMOutputError(f"the reply was cut off at max_tokens before {tool.name} was complete")
     if finish in ("content_filter", "refusal"):
@@ -266,13 +394,7 @@ def _parse[T: BaseModel](reply: dict[str, Any], tool: Tool[T]) -> T:
         data = json.loads(arguments) if isinstance(arguments, str) else arguments
     except json.JSONDecodeError as exc:
         raise LLMOutputError(f"the {tool.name} arguments were not valid JSON: {exc}") from None
-    try:
-        return tool.schema.model_validate(data)
-    except ValidationError as exc:
-        detail = str(exc)[:_DETAIL_LIMIT]
-        raise LLMOutputError(
-            f"the {tool.name} arguments did not match its schema: {detail}"
-        ) from None
+    return _validate(data, tool)
 
 
 def _is_call(function: Any) -> bool:

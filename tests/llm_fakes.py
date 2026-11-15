@@ -54,3 +54,37 @@ def unclear_entry(reason: str, claim_id: str = "c1") -> dict[str, Any]:
 def draft_answer(*tests: dict[str, Any], finish: str = "tool_calls") -> dict[str, Any]:
     """A reply calling `submit_tests` with these entries."""
     return tool_reply("submit_tests", {"tests": list(tests)}, finish)
+
+
+def calls_reply(*calls: tuple[str, Any], finish: str = "tool_calls") -> dict[str, Any]:
+    """A reply making several tool calls, given as `(name, arguments)`; ids are `call_1`, …"""
+    entries = [
+        {
+            "id": f"call_{n}",
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": arguments if isinstance(arguments, str) else json.dumps(arguments),
+            },
+        }
+        for n, (name, arguments) in enumerate(calls, start=1)
+    ]
+    message = {"role": "assistant", "content": None, "tool_calls": entries}
+    return {
+        "id": "gen-1",
+        "model": "claude-sonnet-5-5",
+        "choices": [{"index": 0, "finish_reason": finish, "message": message}],
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 100, "cost": 0.3},
+    }
+
+
+def text_reply(text: str, finish: str = "stop") -> dict[str, Any]:
+    """A reply with words and no tool call."""
+    return {
+        "id": "gen-1",
+        "model": "claude-sonnet-5-5",
+        "choices": [
+            {"index": 0, "finish_reason": finish, "message": {"role": "assistant", "content": text}}
+        ],
+        "usage": {"prompt_tokens": 1000, "completion_tokens": 20, "cost": 0.2},
+    }

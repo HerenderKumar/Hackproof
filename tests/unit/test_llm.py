@@ -18,15 +18,19 @@ from core.llm import (
     LLMClient,
     LLMOutputError,
     ReplayMissing,
+    StepReply,
     Tool,
+    ToolCall,
     Transport,
     live_transport,
     make_llm_client,
+    parse_arguments,
     recording_transport,
     replay_transport,
     request_key,
 )
 from core.settings import Settings
+from tests.llm_fakes import calls_reply, text_reply
 
 Sessions = async_sessionmaker[AsyncSession]
 BASE = "https://gateway.example/v1"
@@ -291,3 +295,97 @@ async def test_every_call_writes_an_llm_calls_row(sessions: Sessions) -> None:
     ]
     assert all((r.job_id, r.purpose, r.model) == (job_id, "draft", "m") for r in rows)
     assert all(r.duration_ms is not None and r.duration_ms >= 0 for r in rows)
+
+
+# --- a step of a conversation (M8) ---------------------------------------------------------------
+
+
+class Path_(BaseModel):
+    path: str
+
+
+LIST = Tool("list_dir", "List a folder.", Path_)
+CONVERSATION: list[dict[str, Any]] = [
+    {"role": "system", "content": "Use the tools."},
+    {"role": "user", "content": "Look around."},
+]
+
+
+async def take_step(transport: Transport, **overrides: Any) -> StepReply:
+    values: dict[str, Any] = {
+        "purpose": "audit",
+        "model": "m",
+        "messages": CONVERSATION,
+        "tools": [LIST, TOOL],
+        "max_tokens": 100,
+    }
+    return await LLMClient(transport).step(**{**values, **overrides})
+
+
+async def test_a_step_returns_every_tool_call_and_the_assistant_message() -> None:
+    answer = calls_reply(("list_dir", {"path": ""}), ("submit_answer", {"sum": 3}))
+
+    step = await take_step(Scripted(answer))
+
+    assert [(c.id, c.name) for c in step.calls] == [
+        ("call_1", "list_dir"),
+        ("call_2", "submit_answer"),
+    ]
+    assert json.loads(step.calls[0].arguments) == {"path": ""}
+    assert step.message["role"] == "assistant"
+    assert [c["id"] for c in step.message["tool_calls"]] == ["call_1", "call_2"]
+    assert (step.finish, step.prompt_tokens, step.completion_tokens) == ("tool_calls", 1000, 100)
+
+
+async def test_a_step_with_words_only_has_no_calls() -> None:
+    step = await take_step(Scripted(text_reply("Thinking.")))
+
+    assert step.calls == ()
+    assert step.message == {"role": "assistant", "content": "Thinking."}
+
+
+async def test_a_step_sends_the_whole_conversation_and_all_tools() -> None:
+    transport = Scripted(calls_reply(("list_dir", {"path": ""})))
+
+    await take_step(transport, max_tokens=321)
+
+    [body] = transport.bodies
+    assert body["messages"] == CONVERSATION
+    assert [t["function"]["name"] for t in body["tools"]] == ["list_dir", "submit_answer"]
+    assert body["tool_choice"] == "auto"
+    assert body["max_tokens"] == 321
+    assert "temperature" not in body
+
+
+async def test_a_step_counts_its_tokens_and_writes_an_llm_calls_row(sessions: Sessions) -> None:
+    async with sessions.begin() as session:
+        job_id, _ = await queue.enqueue(session, "audit", f"audit:{uuid.uuid4()}")
+    client = LLMClient(Scripted(calls_reply(("list_dir", {"path": ""}))), sessions=sessions)
+
+    await client.step(purpose="audit", model="m", messages=CONVERSATION, tools=[LIST],
+                      max_tokens=10, job_id=job_id)  # fmt: skip
+
+    [row] = await calls(sessions)
+    assert (row.ok, row.purpose, row.input_tokens, row.output_tokens, row.job_id) == (
+        True, "audit", 1000, 100, job_id,
+    )  # fmt: skip
+
+
+@pytest.mark.parametrize("arguments", ["{not json", '{"sum": "many"}', "[]"])
+def test_arguments_that_are_not_json_or_break_the_schema_are_output_errors(arguments: str) -> None:
+    with pytest.raises(LLMOutputError, match="submit_answer"):
+        parse_arguments(ToolCall("call_1", "submit_answer", arguments), TOOL)
+
+
+def test_good_arguments_parse_into_the_tools_model() -> None:
+    assert parse_arguments(ToolCall("call_1", "submit_answer", '{"sum": 5}'), TOOL) == Answer(sum=5)
+
+
+async def test_a_step_cut_off_with_no_call_is_an_output_error() -> None:
+    with pytest.raises(LLMOutputError, match="cut off"):
+        await take_step(Scripted(text_reply("Let me", finish="length")))
+
+
+async def test_a_step_with_no_choices_is_an_infrastructure_error() -> None:
+    with pytest.raises(InfraError):
+        await take_step(Scripted({"usage": {}}))

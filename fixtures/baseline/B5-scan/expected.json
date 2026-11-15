@@ -1,0 +1,18 @@
+{
+  "percent": 63.4,
+  "late_percent": 0.0,
+  "identical_files": 1,
+  "matches": [
+    {"final_path": "weather.js", "kind": "identical_file", "old_path": "project/weather.js"}
+  ],
+  "excluded_starter": false,
+  "excluded_common": false,
+  "scan": {
+    "device": "laptop",
+    "keys_blanked": 1,
+    "never_opened": [".env", "project/node_modules/left-pad/index.js"],
+    "skipped": {"dependency": 1},
+    "unreadable": ["locked"],
+    "complete": false
+  }
+}

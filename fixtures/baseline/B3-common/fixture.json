@@ -1,0 +1,10 @@
+{
+  "title": "All new code, apart from one boilerplate file that three teams' devices hold",
+  "devices": {
+    "own": {"folder": "own", "team": "own", "late": false},
+    "rival-one": {"folder": "rival-one", "team": "rival-one", "late": false},
+    "rival-two": {"folder": "rival-two", "team": "rival-two", "late": false}
+  },
+  "starter": null,
+  "make": []
+}

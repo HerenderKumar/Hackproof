@@ -11,6 +11,7 @@ import os
 import re
 import tarfile
 import uuid
+from collections.abc import Callable, Iterator
 from pathlib import Path, PurePosixPath
 
 from core.errors import InfraError
@@ -97,6 +98,24 @@ def extract_archive(archive: Path, expected_sha256: str, dest: Path) -> None:
         _check(tar)  # before writing anything, so a bad archive leaves nothing behind
         dest.mkdir(parents=True, exist_ok=True)
         tar.extractall(dest, filter="data")
+
+
+def read_archive(
+    archive: Path, expected_sha256: str, wanted: Callable[[str, int], bool]
+) -> Iterator[tuple[str, bytes]]:
+    """The regular files of a stored snapshot that `wanted(path, size)` asks for, read without
+    extracting anything. The archive is checked as `extract_archive` checks it."""
+    if _sha256_file(archive) != expected_sha256:
+        raise ArchiveChanged(f"{archive.name} does not match its recorded SHA-256")
+    with tarfile.open(archive, "r:gz") as tar:
+        _check(tar)
+        for member in tar.getmembers():
+            path = PurePosixPath(member.name).as_posix()
+            if not member.isreg() or not wanted(path, member.size):
+                continue
+            stream = tar.extractfile(member)
+            assert stream is not None  # a regular file always has one
+            yield path, stream.read()
 
 
 # --- helpers -------------------------------------------------------------------------------------

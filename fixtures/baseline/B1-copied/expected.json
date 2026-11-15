@@ -1,0 +1,12 @@
+{
+  "percent": 59.1,
+  "late_percent": 0.0,
+  "identical_files": 3,
+  "matches": [
+    {"final_path": "src/server.js", "kind": "identical_file", "old_path": "projects/notes-app/server.js"},
+    {"final_path": "src/store.js", "kind": "identical_file", "old_path": "projects/notes-app/store.js"},
+    {"final_path": "tools/format.py", "kind": "identical_file", "old_path": "projects/notes-app/format.py"}
+  ],
+  "excluded_starter": false,
+  "excluded_common": false
+}

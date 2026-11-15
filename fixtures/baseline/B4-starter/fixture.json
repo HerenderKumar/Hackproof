@@ -1,0 +1,6 @@
+{
+  "title": "The event's starter kit plus new code; the device also holds the starter",
+  "devices": {"laptop": {"folder": "laptop", "team": "own", "late": false}},
+  "starter": "starter",
+  "make": []
+}

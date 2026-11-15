@@ -1,0 +1,6 @@
+{
+  "title": "A project from the device, copied unchanged, beside two new files",
+  "devices": {"laptop": {"folder": "laptop", "team": "own", "late": false}},
+  "starter": null,
+  "make": []
+}

@@ -147,9 +147,7 @@ def _exclude(
     counts = common_teams({h for _, h in f.prints}) if f.prints else {}
     for pos, h in f.prints:
         if counts.get(h, 0) >= min_teams:
-            for t in range(pos, pos + k):
-                if f.state[t] == FREE:
-                    f.state[t] = COMMON
+            _set_free(f, pos, pos + k - 1, COMMON)
     f.common = {h for h, n in counts.items() if n >= min_teams}
 
 
@@ -181,7 +179,12 @@ def _pass(
             cache[key] = _Old(ref, baseline, k)
         olds.append(cache[key])
 
-    regions = [r for old in olds for r in _regions(f, old, k) if not _all_common(f, r, k)]
+    stretches = [r for old in olds for r in _regions(f, old, k)]
+    # A region whose fingerprints are all common is excluded whole, before any is taken.
+    for region in stretches:
+        if _all_common(f, region, k):
+            _set_free(f, region.start, region.end, COMMON)
+    regions = [r for r in stretches if not _all_common(f, r, k)]
     regions.sort(
         key=lambda r: (-r.length, r.old.ref.baseline_id, r.old.ref.path, r.start + r.shift, r.start)
     )
@@ -210,6 +213,11 @@ def _identical(
     if not refs:
         return None
     f.done = True
+    if f.prints and all(h in f.common for _, h in f.prints):
+        # A whole file enough teams hold is excluded whole, as a region would be: winnowing
+        # leaves a few tokens at its ends outside every common run, and those are not a match.
+        _set_free(f, 0, len(f.state) - 1, COMMON)
+        return None
     mark = LATE if late else MATCHED
     claimed = 0
     for t, state in enumerate(f.state):
@@ -256,6 +264,13 @@ def _regions(f: _File, old: _Old, k: int) -> list[_Region]:
             prev = i
         regions.append(_Region(old, run_start, prev + k - 1, shift))
     return regions
+
+
+def _set_free(f: _File, start: int, end: int, state: int) -> None:
+    """Give `state` to the tokens from `start` to `end` that are still free."""
+    for t in range(start, end + 1):
+        if f.state[t] == FREE:
+            f.state[t] = state
 
 
 def _all_common(f: _File, region: _Region, k: int) -> bool:

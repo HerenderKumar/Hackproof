@@ -1,0 +1,13 @@
+{
+  "percent": 66.4,
+  "late_percent": 0.0,
+  "identical_files": 0,
+  "matches": [
+    {"final_path": "calc.js", "kind": "edited", "old_path": "old/calc.js"},
+    {"final_path": "router.js", "kind": "unchanged", "old_path": "old/router.js"},
+    {"final_path": "router.js", "kind": "unchanged", "old_path": "old/router.js"},
+    {"final_path": "app.js", "kind": "unchanged", "old_path": "old/helpers.js"}
+  ],
+  "excluded_starter": false,
+  "excluded_common": false
+}

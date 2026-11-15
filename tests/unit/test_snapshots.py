@@ -12,7 +12,13 @@ import pytest
 
 from core.errors import InfraError
 from core.repo import CommitNotFound, InvalidCommit
-from core.snapshots import UnsafeArchive, archive_commit, counts_toward_lines, extract_archive
+from core.snapshots import (
+    UnsafeArchive,
+    archive_commit,
+    counts_toward_lines,
+    extract_archive,
+    read_archive,
+)
 from scripts.fixtures import HistoryCommit, HistoryFixture, Push, load_history_fixtures
 from scripts.git_fixtures import PUSH_LOG, build_history_remote
 
@@ -266,3 +272,36 @@ def test_an_archive_that_reaches_outside_its_folder_is_refused(
         extract_archive(archive, hashlib.sha256(data).hexdigest(), dest)
     assert not (tmp_path / "deep" / "escape.txt").exists()
     assert not (tmp_path / "escape.txt").exists()
+
+
+# --- reading without extracting (M9) -------------------------------------------------------
+
+
+async def test_an_archives_files_are_read_without_extracting(tmp_path: Path) -> None:
+    repo, sha = one_commit_repo(
+        tmp_path, {"src/a.js": b"let a = 1;\n", "README.md": b"# r\n", "big.js": b"x" * 5000}
+    )
+    files = await archive_commit(repo, sha, tmp_path / "archives")
+    before = sorted(p.name for p in tmp_path.rglob("*"))
+
+    asked: list[tuple[str, int]] = []
+
+    def wanted(path: str, size: int) -> bool:
+        asked.append((path, size))
+        return path.endswith(".js") and size < 1000
+
+    read = dict(read_archive(files.archive_path, files.archive_sha256, wanted))
+
+    assert read == {"src/a.js": b"let a = 1;\n"}
+    assert ("big.js", 5000) in asked and ("README.md", 4) in asked
+    assert sorted(p.name for p in tmp_path.rglob("*")) == before
+
+
+def test_reading_an_archive_that_changed_or_is_unsafe_is_refused(tmp_path: Path) -> None:
+    data = tar_with(link_member("up", "../../escape.txt", tarfile.SYMTYPE))
+    archive = tmp_path / "bad.tar.gz"
+    archive.write_bytes(data)
+    with pytest.raises(UnsafeArchive):
+        list(read_archive(archive, hashlib.sha256(data).hexdigest(), lambda _p, _s: True))
+    with pytest.raises(InfraError, match="SHA-256"):
+        list(read_archive(archive, "0" * 64, lambda _p, _s: True))

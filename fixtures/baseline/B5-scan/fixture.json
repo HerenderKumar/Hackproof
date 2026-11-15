@@ -1,0 +1,10 @@
+{
+  "title": "The scan itself: a key blanked, a .env never opened, a dependency folder and an unreadable folder",
+  "devices": {"laptop": {"folder": "laptop", "team": "own", "late": false}},
+  "starter": null,
+  "make": [
+    {"device": "laptop", "path": ".env", "content": "WEATHER_TOKEN=never-read-by-the-scanner\n"},
+    {"device": "laptop", "path": "project/node_modules/left-pad/index.js", "content": "module.exports = (s, n) => String(s).padStart(n);\n"},
+    {"device": "laptop", "path": "locked", "unreadable": true}
+  ]
+}

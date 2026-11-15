@@ -134,6 +134,19 @@ def test_code_three_teams_hold_leaves_both_sides_whole() -> None:
     assert report.totals.percent == 0.0
 
 
+def test_a_whole_file_three_teams_hold_is_excluded_to_its_ends() -> None:
+    shared = block(8)
+    report = run(
+        {"same.js": shared, "new.js": block(16)},
+        [MemoryBaseline("b1", {"o.js": shared})],
+        common=dict.fromkeys(_prints(shared), 3),
+    )
+    assert report.matches == ()
+    [same] = [f for f in report.files if f.path == "same.js"]
+    assert same.excluded == same.total and same.matched == 0
+    assert report.totals.percent == 0.0
+
+
 def test_code_two_teams_hold_is_not_common() -> None:
     shared = block(8)
     report = run(

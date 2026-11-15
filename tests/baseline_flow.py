@@ -5,10 +5,15 @@ import hashlib
 import io
 import json
 import tarfile
+import uuid
 from collections.abc import Sequence
 from dataclasses import asdict
+from pathlib import Path
 
+from core.baselines.index import build_index
 from core.baselines.parts import Entry
+from core.baselines.store import BaselineStore
+from core.priorwork.model import MatchSettings
 
 
 def sha(data: bytes) -> str:
@@ -40,3 +45,28 @@ def make_part(files: dict[str, bytes], *, extra_entries: Sequence[Entry] = ()) -
     entries = [entry(path, data) for path, data in sorted(files.items())] + list(extra_entries)
     members = {sha(data): data for data in files.values()}
     return pack([asdict(e) for e in entries], sorted(members.items()))
+
+
+def archive_of(folder: Path, files: dict[str, bytes]) -> tuple[Path, str]:
+    """A snapshot-shaped archive (a gzip tar of the files) and its SHA-256."""
+    raw = io.BytesIO()
+    with tarfile.open(fileobj=raw, mode="w:gz") as tar:
+        for name, data in sorted(files.items()):
+            _add(tar, name, data)
+    folder.mkdir(parents=True, exist_ok=True)
+    archive = folder / f"{uuid.uuid4().hex}.tar.gz"
+    archive.write_bytes(raw.getvalue())
+    return archive, sha(raw.getvalue())
+
+
+DEFAULT_SETTINGS = MatchSettings()
+
+
+def stored_baseline(
+    root: Path, key: bytes, files: dict[str, bytes], settings: MatchSettings = DEFAULT_SETTINGS
+) -> uuid.UUID:
+    """A baseline whose one part is stored and indexed under `root`, as the worker leaves it."""
+    baseline = uuid.uuid4()
+    BaselineStore(root, key).write_part(baseline, 1, make_part(files))
+    build_index(root, key, baseline, 1, "test", 1024 * 1024, settings)
+    return baseline

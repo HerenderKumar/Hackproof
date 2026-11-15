@@ -20,7 +20,17 @@ export function VerdictStrip({ verdicts }: { verdicts: Record<string, Verdict> }
 /** A value in words a person reads: "total: 250.5 · people: 4", lists comma-separated. */
 export function readable(value: unknown): string {
   if (value === null || value === undefined) return "—";
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    const t = value.trim();
+    if ((t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"))) {
+      try {
+        return readable(JSON.parse(t));
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (Array.isArray(value)) {
     return value.every((v) => v === null || typeof v !== "object") ? value.map(readable).join(", ") : value.map(readable).join("; ");

@@ -70,7 +70,7 @@ function Evidence({ item }: { item: Case }) {
       )}
       {item.failed.map((a, i) => (
         <p key={i} className="mt-2 text-red-800">
-          <span className="font-medium">{a.op}</span>
+          <span className="font-medium">{a.op.replace(/_/g, " ")}</span>
           {a.path && <Mono className="mx-1">{a.path}</Mono>}: expected <Mono>{readable(a.expected)}</Mono>, got{" "}
           <Mono>{readable(a.actual)}</Mono>
           {a.note && <span className="block text-xs text-red-700">{a.note}</span>}

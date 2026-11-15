@@ -9,7 +9,7 @@ RECORDINGS := -v "$(CURDIR)/fixtures/llm":/recordings -e LLM_REPLAY_DIR=/recordi
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits smoke fixture-remotes seed-demo runner-image prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits smoke fixture-remotes seed-demo runner-image runner-test prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -90,7 +90,15 @@ seed-demo: env-check runner-image ## Create the demo event and pre-run every job
 	$(RUN_WORKER) worker python -m scripts.seed_demo
 
 runner-image: ## Build the test runner image
-	docker build -f runner/Dockerfile -t $(RUNNER_IMAGE) .
+	docker build -f runner/Dockerfile --target runner -t $(RUNNER_IMAGE) .
+
+# The UI runner's browser tests (M11): real Chromium against small local pages, in the runner image
+# plus pytest. On the host the same tests are skipped, since Playwright lives only in the image.
+runner-test: ## Browser tests of the UI runner, inside the runner image
+	docker build -f runner/Dockerfile --target runner-test -t $(RUNNER_IMAGE)-test .
+	docker run --rm --init --shm-size 512m -v "$(CURDIR)":/src:ro -w /src -e PYTHONPATH=/src \
+	  --entrypoint python $(RUNNER_IMAGE)-test -m pytest -p no:cacheprovider --noconftest \
+	  -o addopts= -W ignore::pytest.PytestConfigWarning -q tests/browser
 
 prune: ## Remove HackProof run containers, networks and built team images
 	@ids=$$(docker ps -aq --filter label=hackproof.attempt); [ -z "$$ids" ] || docker rm -f $$ids

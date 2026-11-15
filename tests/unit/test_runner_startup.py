@@ -9,7 +9,7 @@ import pytest
 
 from runner.main import load_request, load_request_text, run
 from runner.startup import ProbeFailed, check_startup
-from tests.spec_examples import F07
+from tests.spec_examples import F05, F07
 
 
 class FakeTime:
@@ -271,3 +271,41 @@ def test_spec_numbers_reach_the_tests_with_their_exact_text(tmp_path: Path) -> N
 
     assert request["candidate_ports"] == [8080]
     assert load_request_text('{"x": 100.00}')["x"] == Decimal("100.00")
+
+
+# --- after the API tests, the UI tests -----------------------------------------------------------
+
+
+class FakeUiRunner:
+    def __init__(self) -> None:
+        self.calls: list[tuple[list[str], str, str]] = []
+
+    def __call__(self, specs: list[dict], mode: str, app_url: str, work: Path) -> list[dict]:
+        self.calls.append(([s["spec_id"] for s in specs if s["kind"] == "ui"], mode, app_url))
+        return [{"spec_id": s["spec_id"], "case_id": "f1", "status": "pass"}
+                for s in specs if s["kind"] == "ui"]  # fmt: skip
+
+
+def test_ui_tests_run_after_the_api_tests_and_keep_the_specs_order(tmp_path: Path) -> None:
+    ui = F05 | {"spec_id": "u5"}
+    write_spec(tmp_path, specs=[ui, F07 | {"spec_id": "s7"}])
+    time, browser = FakeTime(), FakeUiRunner()
+
+    run(tmp_path, probe=FakeApp(time, {"http://app:8080/": [200]}), monotonic=time.monotonic,
+        sleep=time.sleep, client=recording_client([]), ui_runner=browser)  # fmt: skip
+
+    tests = json.loads((tmp_path / "results.json").read_text())["tests"]
+    assert browser.calls == [(["u5"], "final", "http://app:8080")]
+    assert [(t["spec_id"], t["case_id"]) for t in tests] == [
+        ("u5", "f1"), ("s7", "f1"), ("s7", "f2"), ("s7", "f3"),
+    ]  # fmt: skip
+
+
+def test_a_run_without_a_ui_spec_never_starts_a_browser(tmp_path: Path) -> None:
+    write_spec(tmp_path, specs=[F07 | {"spec_id": "s7"}])
+    time, browser = FakeTime(), FakeUiRunner()
+
+    run(tmp_path, probe=FakeApp(time, {"http://app:8080/": [200]}), monotonic=time.monotonic,
+        sleep=time.sleep, client=recording_client([]), ui_runner=browser)  # fmt: skip
+
+    assert browser.calls == []

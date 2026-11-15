@@ -8,8 +8,8 @@ can check a result instead of trusting it.
 What went wrong decides the status. The app's own failures are `fail`: an assertion that did
 not hold, a value to save that was not there. An app that stopped answering mid-test is
 `connection_refused`, which the worker records as `fail` too. Problems that are not the app's
-are errors the worker records as `unverified`: a `timeout`, a broken `spec`, a UI spec before
-UI tests exist (`unsupported`), or a crash of the runner itself (`runner`).
+are errors the worker records as `unverified`: a `timeout`, a broken `spec`, or a crash of the
+runner itself (`runner`). UI specs are left to `runner/ui_tests.py`.
 """
 
 import json
@@ -46,12 +46,7 @@ def run_api_tests(
     for raw in specs:
         spec_id = str(raw.get("spec_id", ""))
         kind = raw.get("kind")
-        if kind == "ui":
-            entries.append(
-                _error_entry(spec_id, None, "unsupported", "UI tests are not available yet")
-            )
-            continue
-        if kind != "api":
+        if kind != "api":  # startup checks are the runner's own; UI tests run in a browser
             continue
         try:
             spec = ApiSpecShape.model_validate(raw)

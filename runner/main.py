@@ -3,8 +3,10 @@
 It runs in its own container on the run's internal network, as the image's non-root user,
 with no secrets. As soon as the startup check ends it writes `startup.json`, so the worker can
 tell an app that died before answering from one that died mid-test. Only if the app is up
-does it run the API tests (`runner/api_tests.py`) on the port that answered. UI tests arrive
-in M11. Numbers in `spec.json` are read as `Decimal`, so case values keep their exact text.
+does it run the API tests (`runner/api_tests.py`) on the port that answered, then the UI tests
+(`runner/ui_tests.py`) in a browser started only when the run carries one. Results keep the
+order the specs came in. Numbers in `spec.json` are read as `Decimal`, so case values keep their
+exact text.
 
 Results are written to a temporary name and renamed, so the worker never reads half a file.
 A runner that crashes writes no `results.json`, which the worker treats as an infrastructure
@@ -23,6 +25,7 @@ import httpx
 
 from runner.api_tests import REQUEST_TIMEOUT_S, run_api_tests
 from runner.startup import Probe, check_startup, http_probe, url_for
+from runner.ui_tests import UiRunner, has_ui, playwright_ui_runner
 
 DEFAULT_HEALTH_PATH = "/"
 
@@ -34,6 +37,7 @@ def run(
     monotonic: Callable[[], float] = time.monotonic,
     sleep: Callable[[float], None] = time.sleep,
     client: httpx.Client | None = None,
+    ui_runner: UiRunner = playwright_ui_runner,
 ) -> int:
     request = load_request(work)
     startup = check_startup(
@@ -53,6 +57,9 @@ def run(
         behaviour = [spec for spec in request["specs"] if spec.get("kind") != "startup"]
         with client or httpx.Client(timeout=REQUEST_TIMEOUT_S, follow_redirects=False) as http:
             tests = run_api_tests(behaviour, request["mode"], app_url, http)
+        if has_ui(behaviour):
+            tests += ui_runner(behaviour, request["mode"], app_url, work)
+        tests = in_spec_order(tests, behaviour)
     results = {
         "runner_version": os.environ.get("RUNNER_VERSION", "1"),
         "startup": startup,
@@ -60,6 +67,12 @@ def run(
     }
     _write_json(work / "results.json", results)
     return 0
+
+
+def in_spec_order(tests: list[dict[str, Any]], specs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Results grouped by spec in the order the specs came; cases keep their own order."""
+    position = {str(spec.get("spec_id", "")): index for index, spec in enumerate(specs)}
+    return sorted(tests, key=lambda entry: position.get(str(entry.get("spec_id")), len(position)))
 
 
 def main() -> int:

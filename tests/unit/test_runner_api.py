@@ -247,13 +247,10 @@ def test_a_spec_without_cases_for_the_mode_runs_once() -> None:
     assert [(e["case_id"], e["status"]) for e in entries] == [(None, "pass")]
 
 
-def test_ui_specs_are_reported_unsupported() -> None:
+def test_ui_specs_are_left_to_the_browser() -> None:
     ui = {"spec_id": "u1", "kind": "ui", "claim_id": "c2", "claim_type": "ui_workflow", "steps": []}
 
-    (entry,) = run_api_tests([ui], "final", URL, client(good_splitter))
-
-    assert (entry["spec_id"], entry["case_id"], entry["status"]) == ("u1", None, "error")
-    assert entry["error"] == {"type": "unsupported", "message": "UI tests are not available yet"}
+    assert run_api_tests([ui], "final", URL, client(good_splitter)) == []
 
 
 def test_startup_specs_are_not_api_tests() -> None:

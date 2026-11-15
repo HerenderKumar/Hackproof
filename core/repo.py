@@ -1,7 +1,7 @@
 """The repository boundary (section 13.1, D-006).
 
-All access to a team's repository goes through `RepoProvider`. This file holds the part
-registration needs, `head` (M7) and `snapshot`; `compare` joins it with the milestone that uses it.
+All access to a team's repository goes through `RepoProvider`. `describe` serves
+registration, `head` and `compare` the repo watch (M9), `snapshot` the runs.
 """
 
 from datetime import datetime
@@ -57,6 +57,18 @@ class SnapshotFiles(BaseModel):
     lines_total: int
 
 
+class Comparison(BaseModel):
+    """How a head relates to an earlier one (section 13.2)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    status: Literal["ahead", "behind", "diverged", "identical"]
+    lines_added: int  # counted as `lines_total` is: no lockfiles, dependency folders or binaries
+    files_changed: int  # every path, counted or not
+    # Commits in the head and not in the base, newest first, capped like `commit_history`.
+    commits: list[dict[str, str]]
+
+
 class RepoProvider(Protocol):
     name: ProviderName
 
@@ -72,6 +84,14 @@ class RepoProvider(Protocol):
         """The SHA of the default branch's last commit, or None when the branch has none yet.
 
         Raises `InfraError` when the provider cannot be reached.
+        """
+        ...
+
+    async def compare(self, repo: RepoInfo, base: str | None, head: str) -> Comparison:
+        """Compare `head` with `base`; `base=None` means the repository had no commit yet.
+
+        A base the provider no longer has gives `diverged` with zero counts. Raises
+        `RepoNotFound` or `InfraError`.
         """
         ...
 

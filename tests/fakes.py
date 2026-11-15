@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from core.repo import ProviderName, RepoInfo, RepoNotFound
+from core.repo import Comparison, ProviderName, RepoInfo, RepoNotFound
 from worker.build import CappedLog
 from worker.runtime import ContainerSpec, ContainerState, Labelled
 
@@ -201,6 +201,8 @@ class FakeRepoProvider:
         self.calls: list[str] = []
         # Each repository's default-branch head by URL: a SHA, None (no commit), or an error.
         self.heads: dict[str, str | Exception | None] = {}
+        # `compare` answers by (base, head): a Comparison or the error to raise.
+        self.comparisons: dict[tuple[str | None, str], Comparison | Exception] = {}
 
     def add(self, url: str, /, **overrides: object) -> RepoInfo:
         values: dict[str, object] = {
@@ -229,6 +231,14 @@ class FakeRepoProvider:
 
     async def head(self, repo: RepoInfo) -> str | None:
         found = self.heads.get(repo.url)
+        if isinstance(found, Exception):
+            raise found
+        return found
+
+    async def compare(self, repo: RepoInfo, base: str | None, head: str) -> Comparison:
+        found = self.comparisons.get((base, head))
+        if found is None:
+            raise AssertionError(f"no comparison set for {(base, head)}")
         if isinstance(found, Exception):
             raise found
         return found

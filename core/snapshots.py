@@ -84,8 +84,8 @@ async def archive_commit(git_dir: Path, sha: str, archives_dir: Path) -> Snapsho
         commit_sha=sha,
         archive_path=archive,
         archive_sha256=digest,
-        commit_history=await _history(git_dir, sha),
-        lines_total=await _lines_total(git_dir, sha),
+        commit_history=await commit_history(git_dir, sha),
+        lines_total=(await diff_counts(git_dir, None, sha))[0],
     )
 
 
@@ -102,10 +102,12 @@ def extract_archive(archive: Path, expected_sha256: str, dest: Path) -> None:
 # --- helpers -------------------------------------------------------------------------------------
 
 
-async def _history(git_dir: Path, sha: str) -> list[dict[str, str]]:
+async def commit_history(git_dir: Path, *revisions: str) -> list[dict[str, str]]:
+    """Self-reported commits of `revisions` (a SHA, or `base..head`), newest first, capped."""
     out = await run_git(
-        "log", f"-n{HISTORY_LIMIT}", "-z", "--format=%H%x1f%aI%x1f%cI%x1f%s", sha, git_dir=git_dir
-    )
+        "log", f"-n{HISTORY_LIMIT}", "-z", "--format=%H%x1f%aI%x1f%cI%x1f%s", *revisions,
+        "--", git_dir=git_dir,
+    )  # fmt: skip
     history = []
     for record in filter(None, out.split("\0")):
         commit, author_date, committer_date, message = record.strip("\n").split("\x1f", 3)
@@ -120,18 +122,24 @@ async def _history(git_dir: Path, sha: str) -> list[dict[str, str]]:
     return history
 
 
-async def _lines_total(git_dir: Path, sha: str) -> int:
-    empty_tree = await run_git("hash-object", "-t", "tree", os.devnull, git_dir=git_dir)
+async def diff_counts(git_dir: Path, base: str | None, head: str) -> tuple[int, int]:
+    """Lines added that count (section 13.2) and every path changed, from `base` to `head`.
+
+    With no base, the diff is from the empty tree, so everything in `head` counts.
+    """
+    if base is None:
+        base = await run_git("hash-object", "-t", "tree", os.devnull, git_dir=git_dir)
     out = await run_git(
         "diff", "--numstat", "-z", "--no-renames", "--no-ext-diff", "--no-textconv",
-        empty_tree, sha, git_dir=git_dir,
+        base, head, git_dir=git_dir,
     )  # fmt: skip
-    total = 0
+    lines = files = 0
     for record in filter(None, out.split("\0")):
         added, _deleted, path = record.split("\t", 2)
+        files += 1
         if added != "-" and counts_toward_lines(path):  # "-" marks a binary file
-            total += int(added)
-    return total
+            lines += int(added)
+    return lines, files
 
 
 def _sha256_file(path: Path) -> str:

@@ -8,8 +8,16 @@ from datetime import datetime
 from pathlib import Path
 
 from core.clock import Clock
-from core.git import run_git
-from core.repo import InvalidRepoUrl, ProviderName, RepoInfo, RepoNotFound, SnapshotFiles
+from core.git import has_commit, run_git
+from core.git_compare import compare_commits
+from core.repo import (
+    Comparison,
+    InvalidRepoUrl,
+    ProviderName,
+    RepoInfo,
+    RepoNotFound,
+    SnapshotFiles,
+)
 from core.snapshots import archive_commit
 
 SCHEME = "local://"
@@ -62,6 +70,14 @@ class LocalGitProvider:
             git_dir=path, check=False,
         )  # fmt: skip
         return sha or None
+
+    async def compare(self, repo: RepoInfo, base: str | None, head: str) -> Comparison:
+        name, path = self._path(repo.url)
+        if not path.is_dir():
+            raise RepoNotFound(f"no local repository named {name}")
+        if base is not None and not await has_commit(path, base):
+            return Comparison(status="diverged", lines_added=0, files_changed=0, commits=[])
+        return await compare_commits(path, base, head)
 
     async def snapshot(self, repo: RepoInfo, sha: str, archives_dir: Path) -> SnapshotFiles:
         name, path = self._path(repo.url)

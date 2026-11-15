@@ -14,6 +14,18 @@ from fastapi.routing import APIRoute
 
 from tests.api_helpers import Api, make_app
 from tests.fakes import FakeClock, FakeRepoProvider
+from tests.helpers import Sessions
+from tests.team_flow import (
+    F01_TEST,
+    HIDDEN,
+    approve_all,
+    drafted,
+    finished_self_check,
+    save_claims,
+    snapshot,
+    started,
+    with_repo,
+)
 
 ROLES = {"organiser", "judge", "team"}
 # The only routes that work without a session: they are how a session starts.
@@ -168,3 +180,113 @@ async def test_the_organiser_and_judges_have_no_team_page(api: Api) -> None:
 
     assert (await organiser.get("/api/team")).status_code == 403
     assert (await judge.get("/api/team")).status_code == 403
+
+
+# --- the team routes (M7): hidden cases never leave, and a team sees only itself -------------
+
+
+async def test_no_team_response_ever_holds_a_hidden_case(
+    api: Api, clock: FakeClock, repos: FakeRepoProvider, sessions: Sessions, tmp_path: Path
+) -> None:
+    flow = await started(api, clock)
+    bodies: list[str] = []
+
+    async def keep(response: httpx.Response) -> None:
+        await response.aread()
+        bodies.append(response.text)
+
+    flow.client.event_hooks["response"].append(keep)
+    client = flow.client
+    await save_claims(flow)
+    [spec] = await drafted(sessions, flow, F01_TEST)
+    await client.get("/api/team/tests")
+    await approve_all(flow)
+    await with_repo(flow, repos)
+    await client.post("/api/team/snapshots", json={})
+    snap = await snapshot(sessions, flow)
+    await client.get("/api/team/snapshots")
+    started_check = await client.post(
+        f"/api/team/snapshots/{snap.id}/self-check", json={"client_request_id": "request-0001"}
+    )
+    job_id = uuid.UUID(started_check.json()["job_id"])
+    log = tmp_path / "runs" / "check" / "app.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("POST /split 200\n")
+    await finished_self_check(
+        sessions, job_id, results=[(spec, "p1", "pass")], logs={"app": log, "build": log}
+    )
+    await client.get(f"/api/team/self-checks/{job_id}")
+    await client.get(f"/api/team/self-checks/{job_id}/logs/app")
+    await client.post(
+        "/api/team/submissions",
+        json={
+            "snapshot_id": str(snap.id),
+            "mode": "sandbox",
+            "reuse_declaration": {
+                "starter_code": False, "earlier_work": False, "ai_assistance": False,
+            },
+            "idempotency_key": "submit-key-0001",
+        },
+    )  # fmt: skip
+    await client.get("/api/team/submissions/current")
+    await client.get("/api/team")
+    await client.get("/api/team/claims")
+
+    assert len(bodies) == 14  # every request above
+    assert [b for b in bodies if "final_cases" in b or str(HIDDEN) in b] == []
+
+
+async def test_every_team_route_answers_only_for_its_own_team(
+    api: Api, clock: FakeClock, sessions: Sessions, tmp_path: Path
+) -> None:
+    flow = await started(api, clock)
+    other = await started(api, clock, name="Comet", organiser=flow.organiser, event=flow.event)
+    await save_claims(flow)
+    [spec] = await drafted(sessions, flow, F01_TEST)
+    snap = await snapshot(sessions, flow)
+    started_check = await flow.client.post(
+        f"/api/team/snapshots/{snap.id}/self-check", json={"client_request_id": "request-0001"}
+    )
+    job_id = started_check.json()["job_id"]
+    log = tmp_path / "runs" / "check" / "app.log"
+    log.parent.mkdir(parents=True)
+    log.write_text("POST /split 200\n")
+    await finished_self_check(sessions, uuid.UUID(job_id), logs={"app": log, "build": log})
+    b = other.client
+
+    refused = {
+        "approve A's test": await b.post(
+            f"/api/team/tests/{spec.id}/approve", json={"spec_hash": spec.spec_hash}
+        ),
+        "self-check A's snapshot": await b.post(
+            f"/api/team/snapshots/{snap.id}/self-check", json={"client_request_id": "request-0002"}
+        ),
+        "read A's self-check": await b.get(f"/api/team/self-checks/{job_id}"),
+        "read A's build log": await b.get(f"/api/team/self-checks/{job_id}/logs/build"),
+        "read A's app log": await b.get(f"/api/team/self-checks/{job_id}/logs/app"),
+        "submit A's snapshot": await b.post(
+            "/api/team/submissions",
+            json={
+                "snapshot_id": str(snap.id),
+                "mode": "sandbox",
+                "reuse_declaration": {
+                    "starter_code": False, "earlier_work": False, "ai_assistance": False,
+                },
+                "idempotency_key": "submit-key-0001",
+            },
+        ),
+    }  # fmt: skip
+
+    assert {name: r.status_code for name, r in refused.items()} == {
+        "approve A's test": 404,
+        "self-check A's snapshot": 404,
+        "read A's self-check": 404,
+        "read A's build log": 404,
+        "read A's app log": 404,
+        "submit A's snapshot": 404,
+    }
+    assert (await b.get("/api/team/claims")).json()["current"] is None
+    assert (await b.get("/api/team/tests")).json()["claims"] == []
+    assert (await b.get("/api/team/snapshots")).json() == {"snapshots": [], "pending": []}
+    assert (await b.get("/api/team/submissions/current")).status_code == 404
+    assert (await b.get("/api/team")).json()["id"] == str(other.team_id)

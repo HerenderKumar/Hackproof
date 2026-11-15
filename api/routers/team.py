@@ -1,20 +1,44 @@
 """The team's own data (section 5.2). Every query starts from the session's team ID."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from api.deps import Db, TeamUser
 from api.errors import api_error
-from api.schemas import RepoIn, TeamEvent, TeamRepo, TeamView
+from api.routers.team_tests import tests_view
+from api.schemas import RepoIn, TeamEvent, TeamProgress, TeamRepo, TeamView
 from api.team_common import own_team
 from core.db import models
 from core.errors import InfraError
+from core.events import claims_lock_at
 from core.repo import InvalidRepoUrl, RepoNotFound, RepoProvider
 
 router = APIRouter(prefix="/api", tags=["team"])
 
 
-def _view(team: models.Team, event: models.Event) -> TeamView:
+async def _progress(db: Db, team: models.Team) -> TeamProgress:
+    tests = await tests_view(db, team.id)
+    states = [claim.state for claim in tests.claims]
+    snapshots = await db.scalar(
+        select(func.count()).select_from(models.Snapshot).where(models.Snapshot.team_id == team.id)
+    )
+    submissions = await db.scalar(
+        select(func.count())
+        .select_from(models.Submission)
+        .where(models.Submission.team_id == team.id)
+    )
+    return TeamProgress(
+        has_claims=tests.claims_version is not None,
+        tests_approved=states.count("approved"),
+        tests_total=states.count("approved") + states.count("draft"),
+        has_snapshot=bool(snapshots),
+        has_submitted=bool(submissions),
+    )
+
+
+async def _view(db: Db, team: models.Team, event: models.Event, now: datetime) -> TeamView:
     repo = None
     if team.registered_at is not None:
         repo = TeamRepo(
@@ -27,26 +51,37 @@ def _view(team: models.Team, event: models.Event) -> TeamView:
     return TeamView(
         id=team.id,
         name=team.name,
-        event=TeamEvent.model_validate(event),
+        now=now,
+        event=TeamEvent(
+            id=event.id,
+            name=event.name,
+            kickoff_at=event.kickoff_at,
+            claims_lock_at=claims_lock_at(event),
+            deadline_at=event.deadline_at,
+            policy_text=event.policy_text,
+        ),
         rules_acknowledged_at=team.rules_acknowledged_at,
         repo=repo,
         suggested_repo_url=None if repo else team.repo_url,
         health_path=team.health_path,
+        progress=await _progress(db, team),
     )
 
 
 @router.get("/team")
-async def read_team(session: TeamUser, db: Db) -> TeamView:
-    return _view(*await own_team(db, session))
+async def read_team(session: TeamUser, request: Request, db: Db) -> TeamView:
+    team, event = await own_team(db, session)
+    return await _view(db, team, event, request.app.state.clock.now())
 
 
 @router.post("/team/rules-ack")
 async def acknowledge_rules(session: TeamUser, request: Request, db: Db) -> TeamView:
     team, event = await own_team(db, session)
+    now = request.app.state.clock.now()
     if team.rules_acknowledged_at is None:
-        team.rules_acknowledged_at = request.app.state.clock.now()
+        team.rules_acknowledged_at = now
         await db.commit()
-    return _view(team, event)
+    return await _view(db, team, event, now)
 
 
 @router.post("/team/repo")
@@ -99,4 +134,4 @@ async def register_repo(body: RepoIn, session: TeamUser, request: Request, db: D
     if body.health_path is not None:
         team.health_path = body.health_path
     await db.commit()
-    return _view(team, event)
+    return await _view(db, team, event, now)

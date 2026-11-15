@@ -182,6 +182,7 @@ class TeamEvent(BaseModel):
     id: uuid.UUID
     name: str
     kickoff_at: datetime
+    claims_lock_at: datetime  # the lock in effect: the event's own, or the default
     deadline_at: datetime
     policy_text: str
 
@@ -194,11 +195,23 @@ class TeamRepo(BaseModel):
     late: bool  # registered after kickoff; shown to judges as context (section 6.6)
 
 
+class TeamProgress(BaseModel):
+    """How far the team has come, for the overview's next step."""
+
+    has_claims: bool
+    tests_approved: int
+    tests_total: int  # the current claims version's tests a team can approve: draft or approved
+    has_snapshot: bool
+    has_submitted: bool
+
+
 class TeamView(BaseModel):
     id: uuid.UUID
     name: str
+    now: datetime  # the API's clock, so a page's countdown does not trust the browser's
     event: TeamEvent
     rules_acknowledged_at: datetime | None
     repo: TeamRepo | None
     suggested_repo_url: str | None
     health_path: str
+    progress: TeamProgress

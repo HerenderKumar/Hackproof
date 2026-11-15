@@ -1,6 +1,6 @@
 """The team's own pages: rules acknowledgement and repository registration (section 5.2)."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import httpx
@@ -10,9 +10,10 @@ from sqlalchemy import text
 from core.errors import InfraError
 from core.repo import InvalidRepoUrl
 from tests.api_helpers import Api
-from tests.factories import T0
+from tests.factories import T0, make_submission
 from tests.fakes import FakeClock, FakeRepoProvider
 from tests.helpers import Sessions
+from tests.team_flow import F01_TEST, START, drafted, save_claims, snapshot, started
 
 REPO = "https://github.com/acme/rocket"
 
@@ -231,3 +232,54 @@ async def test_a_team_only_ever_sees_and_changes_itself(api: Api, repos: FakeRep
     assert (theirs["id"], theirs["repo"], theirs["rules_acknowledged_at"]) == (
         comet_team["id"], None, None,
     )  # fmt: skip
+
+
+# --- the overview: the clock, the claims lock and the team's progress (M7) -------------------
+
+EMPTY_PROGRESS = {
+    "has_claims": False,
+    "tests_approved": 0,
+    "tests_total": 0,
+    "has_snapshot": False,
+    "has_submitted": False,
+}
+
+
+async def test_the_overview_gives_the_time_and_the_claims_lock(api: Api, clock: FakeClock) -> None:
+    _, client = await signed_in_team(api)
+
+    body = (await client.get("/api/team")).json()
+
+    assert datetime.fromisoformat(body["now"]) == clock.now()
+    assert datetime.fromisoformat(body["event"]["claims_lock_at"]) == T0 + timedelta(hours=16)
+    assert body["progress"] == EMPTY_PROGRESS
+
+
+async def test_the_overview_counts_the_teams_progress(
+    api: Api, clock: FakeClock, sessions: Sessions
+) -> None:
+    flow = await started(api, clock)
+    other = await started(api, clock, name="Comet", organiser=flow.organiser, event=flow.event)
+    items = [START["items"][0], {"text": "Refuses zero."}, {"text": "Is fair."}]
+    await save_claims(flow, {**START, "items": items})
+    unclear = {**F01_TEST, "claim_id": "c3", "status": "needs_clarification", "reason": "How?"}
+    first, _, _ = await drafted(sessions, flow, F01_TEST, {**F01_TEST, "claim_id": "c2"}, unclear)
+    approved = await flow.client.post(
+        f"/api/team/tests/{first.id}/approve", json={"spec_hash": first.spec_hash}
+    )
+    snap = await snapshot(sessions, flow)
+    async with sessions.begin() as session:
+        session.add(make_submission(flow.team_id, snap.id))
+
+    mine = (await flow.client.get("/api/team")).json()["progress"]
+    theirs = (await other.client.get("/api/team")).json()["progress"]
+
+    assert approved.status_code == 200
+    assert mine == {
+        "has_claims": True,
+        "tests_approved": 1,
+        "tests_total": 2,
+        "has_snapshot": True,
+        "has_submitted": True,
+    }
+    assert theirs == EMPTY_PROGRESS

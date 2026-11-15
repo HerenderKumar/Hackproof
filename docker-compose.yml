@@ -107,6 +107,8 @@ services:
       # Same path inside and outside, so bind-mount paths the worker gives Docker resolve on the host.
       - ${HOST_ARTIFACT_DIR}:${HOST_ARTIFACT_DIR}
       - ./fixtures/remotes:/app/fixtures/remotes:ro
+      # The recorded model replies, so LLM_MODE=replay drafts without a network call or cost.
+      - ./fixtures/llm:/app/fixtures/llm:ro
     depends_on:
       postgres:
         condition: service_healthy

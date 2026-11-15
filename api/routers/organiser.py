@@ -1,5 +1,5 @@
-"""The organiser's event page (sections 5.1 and 17): the dashboard, job rerun, the score lock
-and the score export.
+"""The organiser's event page (sections 5.1 and 17): the dashboard, the spot-check of a team's
+tests, job rerun, the score lock and the score export.
 
 Rerun never edits a result: it adds a job of the same kind for the same subject, and readers
 take the newest job's rows. Totals in the export are computed here, never stored.
@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from api.deps import Db, Organiser
 from api.errors import api_error
 from api.judging import brief_status, judged_submission, totals
+from api.routers.team_tests import tests_view
 from core import queue
 from core.brief_data import job_state, latest_job
 from core.db import models
@@ -168,6 +169,26 @@ async def dashboard(event_id: uuid.UUID, _: Organiser, db: Db) -> dict[str, Any]
             for job in jobs
         ],
     }
+
+
+@router.get("/teams/{team_id}/specs")
+async def spot_check(team_id: uuid.UUID, _: Organiser, db: Db) -> dict[str, Any]:
+    """A team's tests as the team sees them, plus what only the organiser sees: each test's
+    status and its hidden final cases (section 5.1, step 7)."""
+    team = await db.get(models.Team, team_id)
+    if team is None:
+        raise api_error(404, "team_not_found", "There is no team with that ID.")
+    view = (await tests_view(db, team.id)).model_dump(mode="json")
+    ids = [uuid.UUID(c["test"]["id"]) for c in view["claims"] if c["test"] is not None]
+    specs = {
+        str(spec.id): spec
+        for spec in await db.scalars(select(models.TestSpec).where(models.TestSpec.id.in_(ids)))
+    }
+    for claim in view["claims"]:
+        if claim["test"] is not None:
+            spec = specs[claim["test"]["id"]]
+            claim["test"].update(status=spec.status, final_cases=spec.final_cases)
+    return {"team_id": str(team.id), "team_name": team.name, **view}
 
 
 @router.post("/jobs/{job_id}/rerun", status_code=201)

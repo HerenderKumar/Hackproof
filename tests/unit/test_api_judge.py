@@ -79,6 +79,8 @@ async def test_the_brief_with_the_models_text(api: Api, sessions: Sessions) -> N
     assert [c["verdict"] for c in brief["claims"]] == ["fail", "pass"]
     assert brief["claims"][0]["cases"][0]["failed"][0]["actual"] == "99.99"
     assert brief["rubric"] == r.event["rubric"] and brief["can_score"] is True
+    assert len(brief["submission"]["archive_sha256"]) == 64  # the source evidence (section 6.4)
+    assert "image_digest" in brief["run"]
 
 
 async def test_the_brief_renders_raw_when_the_ai_part_is_missing(
@@ -207,3 +209,19 @@ async def test_the_dashboard_and_a_rerun(api: Api, sessions: Sessions) -> None:
     # The audit is being redone: its old row no longer counts, and the brief says so.
     brief = (await r.judge.get(r.brief_url)).json()
     assert brief["audit"]["status"] == "pending" and brief["claims"][0]["audit"] is None
+
+
+async def test_the_organiser_spot_checks_a_teams_tests_with_the_hidden_cases(
+    api: Api, sessions: Sessions
+) -> None:
+    r = await room(api, sessions)
+    url = f"/api/teams/{r.team['id']}/specs"
+    seen = (await r.organiser.get(url)).json()
+    assert seen["team_name"] == "Rocket" and seen["claims_version"] == 1
+    assert [claim["claim_id"] for claim in seen["claims"]] == ["c1", "c2"]
+    test = seen["claims"][0]["test"]
+    assert test["final_cases"] and test["practice_cases"] and test["steps"]
+    assert test["status"] == "approved"
+    assert (await r.judge.get(url)).status_code == 403
+    missing = await r.organiser.get(f"/api/teams/{r.event['id']}/specs")
+    assert missing.status_code == 404

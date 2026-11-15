@@ -70,6 +70,7 @@ strict = true
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-# No type stubs ship with these; the Docker SDK is wrapped by worker/runtime.py.
-module = ["jsonpath_ng.*", "docker", "docker.*"]
+# No type stubs ship with these; the Docker SDK is wrapped by worker/runtime.py. Playwright
+# lives only in the runner image, where scripts/smoke.py runs.
+module = ["jsonpath_ng.*", "docker", "docker.*", "playwright.*"]
 ignore_missing_imports = true

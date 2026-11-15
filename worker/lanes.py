@@ -15,6 +15,7 @@ import structlog
 from core import queue
 from core.db.engine import Sessions
 from core.errors import InfraError
+from core.llm import ReplayMissing
 from core.logging import get_logger
 from worker.loops import pause
 
@@ -31,6 +32,27 @@ class Outcome:
 
 
 Handler = Callable[[queue.Job], Awaitable[Outcome | None]]
+
+
+# Jobs whose page renders without the model's part (section 7's degradation rule).
+RENDERS_WITHOUT_MODEL = frozenset({"audit", "brief"})
+
+
+async def _infra(job: queue.Job, sessions: Sessions, exc: Exception, duration_ms: int) -> None:
+    """Anything a handler did not turn into a result is treated as infrastructure: the job is
+    retried with the same inputs, then failed (section 19)."""
+    expected = isinstance(exc, InfraError)
+    detail = str(exc) if expected else f"{type(exc).__name__}: {exc}"
+    async with sessions.begin() as session:
+        result = await queue.retry_or_fail(session, job, "infra", detail)
+    log.warning(
+        "job_error",
+        outcome=result,
+        error_class="infra",
+        error_detail=detail,
+        duration_ms=duration_ms,
+        exc_info=not expected,
+    )
 
 
 async def run_job(job: queue.Job, sessions: Sessions, handlers: Mapping[str, Handler]) -> None:
@@ -53,21 +75,14 @@ async def run_job(job: queue.Job, sessions: Sessions, handlers: Mapping[str, Han
             if handler is None:
                 raise InfraError(f"no handler registered for {job.kind}")
             outcome = await handler(job) or Outcome()
+        except ReplayMissing as exc:
+            if job.kind not in RENDERS_WITHOUT_MODEL:
+                await _infra(job, sessions, exc, elapsed_ms())
+                return
+            # Replay mode has no reply for this request, and no later attempt will find one.
+            outcome = Outcome("validation", f"ReplayMissing: {exc}"[:500])
         except Exception as exc:
-            # Anything a handler did not turn into a result is treated as infrastructure:
-            # the job is retried with the same inputs, then failed (section 19).
-            expected = isinstance(exc, InfraError)
-            detail = str(exc) if expected else f"{type(exc).__name__}: {exc}"
-            async with sessions.begin() as session:
-                result = await queue.retry_or_fail(session, job, "infra", detail)
-            log.warning(
-                "job_error",
-                outcome=result,
-                error_class="infra",
-                error_detail=detail,
-                duration_ms=elapsed_ms(),
-                exc_info=not expected,
-            )
+            await _infra(job, sessions, exc, elapsed_ms())
             return
 
         async with sessions.begin() as session:

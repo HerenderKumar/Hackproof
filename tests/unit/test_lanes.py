@@ -9,6 +9,7 @@ import structlog
 
 from core import queue
 from core.errors import InfraError
+from core.llm import ReplayMissing
 from core.logging import configure_logging
 from tests.helpers import Sessions, claim, claimed, enqueue, expire_lease, job_row
 from worker import lanes
@@ -57,6 +58,34 @@ async def test_an_unexpected_exception_is_retried_as_an_infrastructure_error(
     row = await job_row(sessions, job.id)
     assert (row.status, row.error_class) == ("queued", "infra")
     assert row.error_detail == "ValueError: boom"
+
+
+async def test_a_missing_recording_finishes_the_job_without_retrying(sessions: Sessions) -> None:
+    # Replay mode cannot find a reply on a later attempt either: the job ends at once, and the
+    # brief or audit page renders without the model's part.
+    job = await claimed(sessions, "brief")
+
+    async def handler(_: queue.Job) -> None:
+        raise ReplayMissing("brief: no recorded reply abc")
+
+    await lanes.run_job(job, sessions, {"brief": handler})
+
+    row = await job_row(sessions, job.id)
+    assert (row.status, row.error_class) == ("done", "validation")
+    assert row.error_detail == "ReplayMissing: brief: no recorded reply abc"
+
+
+async def test_a_missing_recording_for_a_draft_is_retried(sessions: Sessions) -> None:
+    # A draft that ends with no test would read as "browser test later" on the team's page.
+    job = await claimed(sessions, "draft_specs")
+
+    async def handler(_: queue.Job) -> None:
+        raise ReplayMissing("draft: no recorded reply abc")
+
+    await lanes.run_job(job, sessions, {"draft_specs": handler})
+
+    row = await job_row(sessions, job.id)
+    assert (row.status, row.error_class) == ("queued", "infra")
 
 
 async def test_a_handler_can_finish_with_a_degraded_outcome(sessions: Sessions) -> None:

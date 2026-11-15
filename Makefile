@@ -9,7 +9,7 @@ RECORDINGS := -v "$(CURDIR)/fixtures/llm":/recordings -e LLM_REPLAY_DIR=/recordi
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits fixture-remotes seed-demo runner-image prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits smoke fixture-remotes seed-demo runner-image prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -72,6 +72,18 @@ audits: env-check ## Audit every fixture variant and compare with expected.json
 
 fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)
 	uv run python -m scripts.make_history_fixtures
+
+# The M10 smoke test: a browser (the runner image's Chromium) walks the organiser's setup, a team's
+# flow and a judge's brief against the running stack. Needs `make up` with LLM_MODE=replay and
+# REPO_PROVIDER=local. It adds a "Smoke test" event to the stack's database. On a timeout it
+# leaves the page's screenshot and HTML in SMOKE_OUT.
+SMOKE_OUT ?= $(CURDIR)/.artifacts/smoke
+smoke: env-check runner-image ## Browser smoke test: organiser, team and judge against the running stack
+	mkdir -p "$(SMOKE_OUT)" && chmod 777 "$(SMOKE_OUT)"
+	docker run --rm --add-host=host.docker.internal:host-gateway \
+	  -e ORGANISER_PASSWORD="$$(grep -E '^ORGANISER_PASSWORD=' .env | cut -d= -f2-)" \
+	  -v "$(SMOKE_OUT)":/out -e SMOKE_OUT=/out \
+	  -v "$(CURDIR)/scripts/smoke.py":/smoke/smoke.py:ro --entrypoint python $(RUNNER_IMAGE) /smoke/smoke.py
 
 seed-demo: env-check runner-image ## Create the demo event and pre-run every job
 	$(COMPOSE) up -d --wait postgres buildkit

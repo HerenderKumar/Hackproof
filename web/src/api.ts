@@ -94,5 +94,9 @@ export function isApiError(error: unknown, code?: string): error is ApiError {
 
 /** A fresh key for one action (an idempotency key or a request ID): 8 to 100 of [A-Za-z0-9_-]. */
 export function newKey(): string {
-  return crypto.randomUUID();
+  // randomUUID exists only in secure contexts (https or localhost); a phone on the LAN over
+  // plain http has getRandomValues alone.
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }

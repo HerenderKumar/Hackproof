@@ -221,6 +221,7 @@ async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, An
             "event_id": str(event.id),
             "mode": submission.mode,
             "commit_sha": snapshot.commit_sha,
+            "archive_sha256": snapshot.archive_sha256,
             "commit_url": (
                 f"{team.repo_url.removesuffix('.git').rstrip('/')}/tree/{snapshot.commit_sha}"
                 if team.repo_provider == "github" and team.repo_url
@@ -236,6 +237,7 @@ async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, An
             "build_status": run_row.build_status if run_row is not None else None,
             "startup_status": run_row.startup_status if run_row is not None else None,
             "startup_detail": run_row.startup_detail if run_row is not None else None,
+            "image_digest": run_row.image_digest if run_row is not None else None,
         },
         "claims": claim_cards,
         "audit": {

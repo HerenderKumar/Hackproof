@@ -8,7 +8,7 @@ import { CaseVideo, PageDetails, TraceLink, UiSteps } from "@/components/UiEvide
 import { show, VerdictStrip } from "@/judging/Verdicts";
 import type { Brief as BriefData, BriefClaim, Case, Citation, Mark, Question } from "@/judging/types";
 import { when } from "@/time";
-import type { Verdict } from "@/types";
+import type { PriorWorkView, Verdict } from "@/types";
 
 const IMPLEMENTATION: Record<string, string> = {
   implemented: "Code for it is there",
@@ -332,6 +332,41 @@ const DECLARATION: Record<string, string> = {
   ai_assistance: "Used AI assistance",
 };
 
+/** The prior-work report in one line, with a link to it (M9). Context, never a verdict. */
+function PriorWorkLine({ submissionId, home }: { submissionId: string; home: string }) {
+  const view = useQuery({
+    queryKey: ["prior-work-line", submissionId],
+    queryFn: () => get<PriorWorkView>(`/judge/submissions/${submissionId}/prior-work?limit=1`),
+    refetchInterval: (q) => (q.state.data?.status === "pending" ? 5000 : false),
+  });
+  const v = view.data;
+  let text = "Loading…";
+  if (view.isError) text = "The report could not be loaded.";
+  else if (v?.status === "pending") text = "The report is being made.";
+  else if (v?.status === "no_baseline") text = "No device of the team was scanned at kickoff.";
+  else if (v?.status === "failed") text = "The report could not be made.";
+  else if (v?.totals) {
+    text =
+      v.totals.percent === null
+        ? "No code to compare after leaving out starter and common code."
+        : `${v.totals.percent}% of the final code matched code on the team's devices at kickoff, in ${v.matches_total} ${
+            v.matches_total === 1 ? "match" : "matches"
+          }.`;
+    if (v.totals.late_percent) text += ` A further ${v.totals.late_percent}% from a late scan.`;
+    if (v.explanation) text += " The team explained it.";
+  }
+  return (
+    <Section title="Prior work" aside={<span className="text-xs text-neutral-500">Context for questions, not a verdict</span>}>
+      <p className="text-sm text-neutral-800">{text}</p>
+      {v?.status === "ready" && (
+        <Link to={`${home}/prior-work/${submissionId}`} className="text-sm text-indigo-700 underline">
+          Open the report, with the old and new code side by side
+        </Link>
+      )}
+    </Section>
+  );
+}
+
 export function Brief() {
   const { submissionId = "" } = useParams();
   const brief = useQuery({
@@ -420,6 +455,7 @@ export function Brief() {
         </Section>
       )}
       <Timeline brief={b} />
+      <PriorWorkLine submissionId={submissionId} home={b.can_score ? "/judge" : "/org"} />
       <Section title="What the team declared">
         <ul className="space-y-1 text-sm">
           {Object.entries(DECLARATION).map(([key, label]) => (

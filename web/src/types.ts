@@ -342,6 +342,7 @@ export interface PriorWorkView {
   status: "pending" | "ready" | "no_baseline" | "failed";
   detail: string | null;
   submission_id: string;
+  team_name: string;
   totals: Totals | null;
   files: FileShare[];
   devices: DeviceOut[];
@@ -367,5 +368,50 @@ export interface MatchExcerpts {
 export interface ExplanationOut {
   match_key: string;
   text: string;
+  created_at: string;
+}
+
+// --- the organiser's view of the kickoff scan (M9) ----------------------------------------
+
+export interface Unreadable {
+  path: string;
+  kind: "file" | "folder";
+  reason: string;
+}
+
+export interface ScanSummary {
+  roots: string[];
+  files_found: number;
+  bytes_found: number;
+  skipped: Record<string, number>;
+  keys_blanked: number;
+  size_limit_reached: boolean;
+}
+
+export interface DeviceDetail extends DeviceOut {
+  summary: ScanSummary | null;
+  unreadable: Unreadable[];
+  unreadable_more: number;
+  scanner_version: string | null;
+  platform: string | null;
+}
+
+export interface TeamBaselines {
+  team_id: string;
+  team_name: string;
+  members: number | null;
+  missing: number | null;
+  devices: DeviceDetail[];
+}
+
+export interface BaselinesFeed {
+  teams: TeamBaselines[];
+}
+
+export interface StarterOut {
+  id: string;
+  name: string;
+  files: number;
+  runs: number;
   created_at: string;
 }

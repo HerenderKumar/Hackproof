@@ -3,6 +3,7 @@ import { Fragment, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { get, isApiError, send } from "@/api";
 import { Button, ErrorNotice, Mono, Notice, Section, Spinner } from "@/components/ui";
+import { KickoffScans } from "@/judging/KickoffScans";
 import { show, VerdictStrip } from "@/judging/Verdicts";
 import type { BriefState, Dashboard, EventSummary, JobState, SpotCheck } from "@/judging/types";
 import { when } from "@/time";
@@ -261,6 +262,7 @@ export function OrgHome() {
       </header>
       {failed > 0 && <Notice tone="error">{failed} of the shown jobs failed. Each can be run again below.</Notice>}
       <Teams board={b} />
+      <KickoffScans eventId={b.event.id} />
       <Scores board={b} />
       <Jobs board={b} />
     </>

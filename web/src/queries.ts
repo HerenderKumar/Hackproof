@@ -121,11 +121,12 @@ export function usePriorWork() {
   });
 }
 
-/** One match's two excerpts, loaded only once its card is opened. */
-export function useMatchExcerpts(matchId: string, open: boolean) {
+/** One match's two excerpts, loaded only once its card is opened. `path` is the team's or the
+ * readers' route for it. */
+export function useMatchExcerpts(matchId: string, path: string, open: boolean) {
   return useQuery({
     queryKey: keys.excerpts(matchId),
-    queryFn: () => get<MatchExcerpts>(`/team/prior-work/matches/${matchId}`),
+    queryFn: () => get<MatchExcerpts>(path),
     enabled: open,
     staleTime: Infinity,
   });

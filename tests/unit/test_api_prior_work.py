@@ -121,6 +121,7 @@ async def test_after_the_deadline_a_team_reads_what_the_judge_reads(
     judge = (await r.judge.get(judge_path(r))).json()
 
     assert team["status"] == "ready" and team["matches_total"] == 1
+    assert team["team_name"] == "Rocket"
     for field in ("totals", "files", "matches", "devices", "submission_id"):
         assert team[field] == judge[field], field
     assert (team["can_explain"], judge["can_explain"]) == (True, False)

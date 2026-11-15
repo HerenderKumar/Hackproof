@@ -104,3 +104,15 @@ export function newKey(): string {
 export async function remove(path: string): Promise<void> {
   await request("DELETE", path);
 }
+
+/** A multipart form (a file upload). The browser sets the boundary itself. */
+export async function upload<T>(path: string, form: FormData): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`/api${path}`, { method: "POST", credentials: "same-origin", body: form });
+  } catch {
+    throw new ApiError(0, "network", "HackProof could not be reached. Check your connection.");
+  }
+  if (!response.ok) throw await failure(response);
+  return (await response.json()) as T;
+}

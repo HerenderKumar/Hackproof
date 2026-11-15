@@ -86,8 +86,10 @@ async def report_view(
     devices = await team_devices(db, submission.team_id)
     said = await explanations(db, submission.id)
     whole = said.get("")
+    team = await db.get(models.Team, submission.team_id)
     base = {
         "submission_id": submission.id,
+        "team_name": team.name if team else "",
         "devices": devices,
         "explanation": whole[0] if whole else None,
         "explained_at": whole[1] if whole else None,

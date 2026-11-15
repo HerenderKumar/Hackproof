@@ -37,13 +37,17 @@ export function MatchCard({
   match,
   canExplain,
   codeDeletedAt,
+  reader = false,
 }: {
   match: MatchOut;
   canExplain: boolean;
   codeDeletedAt: string | null;
+  /** A judge or the organiser: the excerpts come from their route; the explanation is the team's. */
+  reader?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const excerpts = useMatchExcerpts(match.id, open && !codeDeletedAt);
+  const path = reader ? `/judge/prior-work/matches/${match.id}` : `/team/prior-work/matches/${match.id}`;
+  const excerpts = useMatchExcerpts(match.id, path, open && !codeDeletedAt);
   const queryClient = useQueryClient();
   const [text, setText] = useState(match.explanation ?? "");
   const save = useMutation({
@@ -125,7 +129,7 @@ export function MatchCard({
         ) : (
           match.explanation && (
             <p className="whitespace-pre-wrap text-sm text-neutral-700">
-              <span className="font-medium">Your explanation: </span>
+              <span className="font-medium">{reader ? "The team's explanation" : "Your explanation"}: </span>
               {match.explanation}
             </p>
           )

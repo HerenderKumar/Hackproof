@@ -217,6 +217,7 @@ class PriorWorkView(BaseModel):
     status: Literal["pending", "ready", "no_baseline", "failed"]
     detail: str | None
     submission_id: uuid.UUID
+    team_name: str
     totals: TotalsOut | None
     files: list[FileShareOut]
     devices: list[DeviceOut]

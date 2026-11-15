@@ -166,7 +166,7 @@ def organiser_setup(context: BrowserContext, stamp: str) -> dict[str, str]:
 
     page.reload()
     expect(page.get_by_role("heading", name=f"Smoke test {stamp}")).to_be_visible()
-    expect(page.get_by_text("Smoke Splitters")).to_be_visible()
+    expect(page.get_by_role("cell", name="Smoke Splitters")).to_be_visible()
     page.close()
     return {"event_id": event_id, **links}
 
@@ -237,6 +237,7 @@ def judge_brief(context: BrowserContext, link: str) -> None:
     expect(page.get_by_role("heading", name="Build timeline")).to_be_visible()
     expect(page.get_by_text("Used AI assistance: yes")).to_be_visible()
     expect(page.get_by_text("Copilot for the tests.")).to_be_visible()
+    expect(page.get_by_text("No device of the team was scanned at kickoff.")).to_be_visible()
     answered(
         page,
         "PUT",
@@ -256,6 +257,8 @@ def organiser_close(context: BrowserContext, event_id: str) -> None:
     step("organiser sees the brief on the dashboard, locks the scores and exports them")
     page.goto(f"{BASE}/org")
     expect(page.get_by_role("link", name="Brief")).to_be_visible()
+    expect(page.get_by_role("heading", name="Kickoff scans")).to_be_visible()
+    expect(page.get_by_text("No device added.")).to_be_visible()
     page.get_by_role("button", name="Tests").first.click()
     expect(page.get_by_text("Final cases (hidden from the team)")).to_be_visible()
     page.on("dialog", lambda dialog: dialog.accept())

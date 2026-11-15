@@ -8,6 +8,7 @@ import { JudgeHome } from "@/pages/JudgeHome";
 import { Login } from "@/pages/Login";
 import { OrgHome } from "@/pages/OrgHome";
 import { PriorWork } from "@/pages/PriorWork";
+import { PriorWorkReader } from "@/pages/PriorWorkReader";
 import { Receipt } from "@/pages/Receipt";
 import { Redeem } from "@/pages/Redeem";
 import { Submit } from "@/pages/Submit";
@@ -43,6 +44,8 @@ export function App() {
       <Route path="/org/brief/:submissionId" element={<Frame title="Brief" home="/org"><Brief /></Frame>} />
       <Route path="/judge" element={<Frame title="Judge" home="/judge"><JudgeHome /></Frame>} />
       <Route path="/judge/brief/:submissionId" element={<Frame title="Brief" home="/judge"><Brief /></Frame>} />
+      <Route path="/judge/prior-work/:submissionId" element={<Frame title="Prior work" home="/judge"><PriorWorkReader home="/judge" /></Frame>} />
+      <Route path="/org/prior-work/:submissionId" element={<Frame title="Prior work" home="/org" wide><PriorWorkReader home="/org" /></Frame>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

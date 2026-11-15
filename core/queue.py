@@ -98,6 +98,11 @@ def audit_key(submission_id: uuid.UUID) -> str:
     return f"audit:{submission_id}"
 
 
+def brief_key(submission_id: uuid.UUID) -> str:
+    """One brief per submission."""
+    return f"brief:{submission_id}"
+
+
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:
     """One poll per team per interval: every enqueue inside a bucket shares a key."""
     return f"poll:{team_id}:{int(at.timestamp()) // poll_interval_s}"

@@ -11,6 +11,8 @@ from api.routers import (
     auth,
     events,
     health,
+    judge,
+    organiser,
     team,
     team_claims,
     team_snapshots,
@@ -67,6 +69,8 @@ def create_app(
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(events.router)
+    app.include_router(organiser.router)
+    app.include_router(judge.router)
     app.include_router(team.router)
     app.include_router(team_claims.router)
     app.include_router(team_tests.router)

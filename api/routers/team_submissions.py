@@ -135,13 +135,22 @@ async def submit(
         submission_id=submission.id,
         team_id=team.id,
     )
-    await queue.enqueue(
+    audit_id, _ = await queue.enqueue(
         db,
         "audit",
         queue.audit_key(submission.id),
         submission_id=submission.id,
         team_id=team.id,
         depends_on=final_run_id,
+    )
+    # The brief's written part waits for the audit, done or failed: it reads what there is.
+    await queue.enqueue(
+        db,
+        "brief",
+        queue.brief_key(submission.id),
+        submission_id=submission.id,
+        team_id=team.id,
+        depends_on=audit_id,
     )
     await db.commit()
     return _receipt(submission, snapshot, team)

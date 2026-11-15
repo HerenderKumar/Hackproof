@@ -124,50 +124,6 @@ function Teams({ board }: { board: Dashboard }) {
   );
 }
 
-function Jobs({ board }: { board: Dashboard }) {
-  const client = useQueryClient();
-  const rerun = useMutation({
-    mutationFn: (id: string) => send("POST", `/jobs/${id}/rerun`),
-    onSuccess: () => client.invalidateQueries({ queryKey: ["dashboard"] }),
-  });
-  return (
-    <Section title="Jobs" aside={<span className="text-xs text-neutral-500">newest {board.jobs.length}</span>}>
-      <ErrorNotice error={rerun.error} />
-      <ul className="divide-y divide-neutral-100 text-sm">
-        {board.jobs.map((j) => (
-          <li key={j.id} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
-            <span>
-              <span className="font-mono text-xs">{j.kind}</span> <span className="text-neutral-600">{j.team_name ?? ""}</span>{" "}
-              <span className={`text-xs ${tone(j.status)}`}>
-                {j.status}
-                {j.attempts > 1 && ` after ${j.attempts} attempts`}
-              </span>
-              {j.error_detail && (
-                <span className="block text-xs text-red-700">
-                  {j.error_class}: {j.error_detail}
-                </span>
-              )}
-            </span>
-            <span className="flex items-center gap-3 text-xs text-neutral-500">
-              {when(j.finished_at ?? j.created_at)}
-              {(j.status === "done" || j.status === "failed") && (
-                <Button
-                  variant="secondary"
-                  className="px-2 py-1 text-xs"
-                  busy={rerun.isPending && rerun.variables === j.id}
-                  onClick={() => rerun.mutate(j.id)}
-                >
-                  Rerun
-                </Button>
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Section>
-  );
-}
-
 function Scores({ board }: { board: Dashboard }) {
   const client = useQueryClient();
   const lock = useMutation({
@@ -238,7 +194,6 @@ export function OrgHome() {
   if (!eventId) return <Notice tone="info" title="No event yet">Create an event through the API first (section 17).</Notice>;
   if (!board.data) return <Spinner label="Loading the dashboard" />;
   const b = board.data;
-  const failed = b.jobs.filter((j) => j.status === "failed").length;
   return (
     <>
       <header>
@@ -262,7 +217,6 @@ export function OrgHome() {
           </details>
         )}
       </header>
-      {failed > 0 && <Notice tone="error">{failed} of the shown jobs failed. Each can be run again below.</Notice>}
       <Teams board={b} />
       <Scores board={b} />
       <details className="rounded-lg border border-neutral-200 bg-white px-5 py-3 shadow-xs">
@@ -271,14 +225,6 @@ export function OrgHome() {
         </summary>
         <div className="mt-3">
           <KickoffScans eventId={b.event.id} />
-        </div>
-      </details>
-      <details className="rounded-lg border border-neutral-200 bg-white px-5 py-3 shadow-xs">
-        <summary className="cursor-pointer select-none text-base font-semibold text-neutral-900">
-          Job log <span className="text-sm font-normal text-neutral-500">({b.jobs.length} newest{failed > 0 ? `, ${failed} failed` : ""})</span>
-        </summary>
-        <div className="mt-3">
-          <Jobs board={b} />
         </div>
       </details>
     </>

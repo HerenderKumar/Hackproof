@@ -19,6 +19,7 @@ a missing recording is `ReplayMissing`. Every call is logged and, given a databa
 import asyncio
 import hashlib
 import json
+import re
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -85,8 +86,40 @@ class StepReply:
     completion_tokens: int
 
 
+_UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def canonical_ids(body: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
+    """The body with every UUID replaced by a numbered placeholder, and placeholder -> real ID.
+
+    A request can name rows made fresh on every run (a brief names its test results), so the
+    recording is keyed and stored with placeholders, numbered in order of first appearance.
+    """
+    real_to_placeholder: dict[str, str] = {}
+
+    def swap(match: re.Match[str]) -> str:
+        real = match.group(0)
+        if real not in real_to_placeholder:
+            real_to_placeholder[real] = (
+                f"00000000-0000-4000-8000-{len(real_to_placeholder) + 1:012d}"
+            )
+        return real_to_placeholder[real]
+
+    text = _UUID.sub(swap, canonical_json(body))
+    canonical: dict[str, Any] = json.loads(text)
+    return canonical, {placeholder: real for real, placeholder in real_to_placeholder.items()}
+
+
+def _substitute(data: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
+    if not mapping:
+        return data
+    text = _UUID.sub(lambda m: mapping.get(m.group(0), m.group(0)), json.dumps(data))
+    swapped: dict[str, Any] = json.loads(text)
+    return swapped
+
+
 def request_key(body: dict[str, Any]) -> str:
-    return hashlib.sha256(canonical_json(body).encode()).hexdigest()
+    return hashlib.sha256(canonical_json(canonical_ids(body)[0]).encode()).hexdigest()
 
 
 # --- transports ----------------------------------------------------------------------------------
@@ -148,19 +181,27 @@ def replay_transport(directory: Path) -> Transport:
 
 
 def _save(directory: Path, body: dict[str, Any], reply: dict[str, Any]) -> None:
+    canonical, placeholders = canonical_ids(body)
+    to_placeholder = {real: placeholder for placeholder, real in placeholders.items()}
     directory.mkdir(parents=True, exist_ok=True)
-    exchange = {"request": body, "response": reply}
+    exchange = {"request": canonical, "response": _substitute(reply, to_placeholder)}
     (directory / f"{request_key(body)}.json").write_text(
         json.dumps(exchange, indent=2, sort_keys=True, ensure_ascii=False) + "\n", encoding="utf-8"
     )
 
 
 def _load(directory: Path, body: dict[str, Any]) -> dict[str, Any] | None:
-    path = directory / f"{request_key(body)}.json"
-    if not path.is_file():
-        return None
-    reply: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))["response"]
-    return reply
+    """The reply recorded for this request, from the directory or one folder inside it."""
+    name = f"{request_key(body)}.json"
+    folders = [directory]
+    if directory.is_dir():
+        folders += sorted(p for p in directory.iterdir() if p.is_dir())
+    for folder in folders:
+        path = folder / name
+        if path.is_file():
+            reply: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))["response"]
+            return _substitute(reply, canonical_ids(body)[1])
+    return None
 
 
 # --- the client ----------------------------------------------------------------------------------

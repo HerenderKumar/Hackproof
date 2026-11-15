@@ -1,5 +1,6 @@
 """The one client for model calls (section 15, D-037): request shape, outcomes, transports, rows."""
 
+import hashlib
 import json
 import uuid
 from pathlib import Path
@@ -14,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from core import queue
 from core.db import models
 from core.errors import InfraError
+from core.hashing import canonical_json
 from core.llm import (
     LLMClient,
     LLMOutputError,
@@ -232,6 +234,48 @@ async def test_a_recording_replays_without_the_network(tmp_path: Path) -> None:
     saved = json.loads((tmp_path / f"{request_key(body)}.json").read_text())
     assert saved == {"request": body, "response": reply()}
     assert await replay_transport(tmp_path)(body) == reply()
+
+
+A1, A2 = "3f2b8c1e-9a4d-4e6f-8b2a-1c5d7e9f0a11", "7d1e4a90-2b3c-4d5e-9f60-a1b2c3d4e5f6"
+B1, B2 = "11111111-2222-4333-8444-555555555555", "99999999-8888-4777-8666-555555555555"
+
+
+def _body(first: str, second: str) -> dict[str, Any]:
+    return {"model": "m", "messages": [{"role": "user", "content": f"tests {first} then {second}"}]}
+
+
+async def test_a_recording_replays_for_the_same_request_with_other_ids(tmp_path: Path) -> None:
+    said = {"choices": [{"message": {"content": f"ask about {A2}"}}]}
+    await recording_transport(Scripted(said), tmp_path)(_body(A1, A2))
+    assert request_key(_body(A1, A2)) == request_key(_body(B1, B2))
+    saved = (tmp_path / f"{request_key(_body(A1, A2))}.json").read_text()
+    assert A1 not in saved and A2 not in saved
+    again = await replay_transport(tmp_path)(_body(B1, B2))
+    assert again["choices"][0]["message"]["content"] == f"ask about {B2}"
+
+
+def test_ids_are_numbered_in_the_order_they_first_appear() -> None:
+    assert request_key(_body(A1, A2)) != request_key(_body(A2, A2))
+    assert request_key(_body(A1, A1)) == request_key(_body(B2, B2))
+
+
+async def test_an_id_the_request_never_named_comes_back_as_recorded(tmp_path: Path) -> None:
+    other = "abcdefab-1234-4abc-8abc-abcdefabcdef"
+    await recording_transport(Scripted({"note": other}), tmp_path)(_body(A1, A2))
+    assert (await replay_transport(tmp_path)(_body(B1, B2)))["note"] == other
+
+
+def test_a_request_without_ids_keeps_its_key() -> None:
+    body = {"model": "m", "messages": [{"role": "user", "content": "no ids here"}]}
+    assert request_key(body) == hashlib.sha256(canonical_json(body).encode()).hexdigest()
+
+
+async def test_replay_also_reads_the_folders_inside_its_directory(tmp_path: Path) -> None:
+    body = _body(A1, A2)
+    await recording_transport(Scripted({"where": "demo"}), tmp_path / "demo")(body)
+    assert (await replay_transport(tmp_path)(body))["where"] == "demo"
+    await recording_transport(Scripted({"where": "top"}), tmp_path)(body)
+    assert (await replay_transport(tmp_path)(body))["where"] == "top"
 
 
 async def test_a_missing_recording_names_its_key(tmp_path: Path) -> None:

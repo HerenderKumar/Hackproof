@@ -28,6 +28,8 @@ COPY worker /app/worker
 COPY runner /app/runner
 COPY prompts /app/prompts
 COPY scripts /app/scripts
+# The kickoff scanner: the API serves it to participants as one file (M9).
+COPY scanner /app/scanner
 
 FROM deps AS api
 COPY --from=source /app /app

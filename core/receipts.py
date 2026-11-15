@@ -30,3 +30,24 @@ def receipt_fields(submission: models.Submission, snapshot: models.Snapshot) -> 
 
 def receipt_hash(fields: Mapping[str, Any]) -> str:
     return hash_json(dict(fields))
+
+
+def baseline_receipt_fields(
+    baseline: models.Baseline, device: models.BaselineDevice, team: models.Team
+) -> dict[str, Any]:
+    """The fields a kickoff scan's receipt hash covers (M9): which device, when it was sealed,
+    whether it was late or incomplete, and the hash of what was sent."""
+    assert baseline.sealed_at is not None, "only a sealed baseline has a receipt"
+    return {
+        "baseline_id": str(baseline.id),
+        "team_id": str(team.id),
+        "team_name": team.name,
+        "device_label": device.label,
+        "sealed_at": baseline.sealed_at.astimezone(UTC).isoformat(timespec="microseconds"),
+        "late": bool(baseline.late),
+        "complete": bool(baseline.complete),
+        "files": baseline.files or 0,
+        "bytes": baseline.bytes_received,
+        "manifest_sha256": baseline.manifest_sha256 or "",
+        "scanner_version": baseline.scanner_version or "",
+    }

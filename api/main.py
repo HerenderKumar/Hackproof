@@ -14,8 +14,10 @@ from api.routers import (
     judge,
     media,
     organiser,
+    scan,
     team,
     team_claims,
+    team_devices,
     team_snapshots,
     team_submissions,
     team_tests,
@@ -78,4 +80,6 @@ def create_app(
     app.include_router(team_snapshots.router)
     app.include_router(team_submissions.router)
     app.include_router(media.router)
+    app.include_router(team_devices.router)
+    app.include_router(scan.router)
     return app

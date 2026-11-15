@@ -6,6 +6,7 @@ without anyone remembering to add a test for it.
 
 import uuid
 from collections.abc import Iterator
+from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,14 @@ import httpx
 from fastapi.routing import APIRoute
 
 from tests.api_helpers import Api, make_app
+from tests.baseline_flow import (
+    add_device,
+    device_client,
+    make_part,
+    put_part,
+    scan,
+    seal_body,
+)
 from tests.fakes import FakeClock, FakeRepoProvider
 from tests.helpers import Sessions
 from tests.team_flow import (
@@ -29,7 +38,18 @@ from tests.team_flow import (
 
 ROLES = {"organiser", "judge", "team"}
 # The only routes that work without a session: they are how a session starts.
-PUBLIC = {("POST", "/api/auth/organiser"), ("GET", "/api/auth/redeem")}
+PUBLIC = {
+    ("POST", "/api/auth/organiser"),
+    ("GET", "/api/auth/redeem"),
+    ("GET", "/api/scanner/hackproof_scan.py"),  # the scanner itself, for anyone to read
+}
+# The kickoff scanner's routes take a device code, never a session (M9).
+DEVICE_CODE = {
+    ("GET", "/api/scan/config"),
+    ("POST", "/api/scan/start"),
+    ("PUT", "/api/scan/{baseline_id}/parts/{n}"),
+    ("POST", "/api/scan/{baseline_id}/seal"),
+}
 
 
 def allowed_roles(route: APIRoute) -> frozenset[str] | None:
@@ -79,7 +99,7 @@ def concrete(path: str) -> str:
 async def test_every_api_route_declares_its_roles(api: Api) -> None:
     unguarded = {(m, r.path) for m, r in api_routes(api) if allowed_roles(r) is None}
 
-    assert unguarded == PUBLIC
+    assert unguarded == PUBLIC | DEVICE_CODE
 
 
 async def test_nothing_else_is_served_under_api_outside_local_development(
@@ -110,7 +130,7 @@ async def test_no_guarded_route_answers_without_a_session(api: Api) -> None:
 
     checked = 0
     for method, route in api_routes(api):
-        if (method, route.path) in PUBLIC:
+        if (method, route.path) in PUBLIC | DEVICE_CODE:
             continue
         response = await anonymous.request(method, concrete(route.path))
         assert response.status_code == 401, (method, route.path)
@@ -290,3 +310,41 @@ async def test_every_team_route_answers_only_for_its_own_team(
     assert (await b.get("/api/team/snapshots")).json() == {"snapshots": [], "pending": []}
     assert (await b.get("/api/team/submissions/current")).status_code == 404
     assert (await b.get("/api/team")).json()["id"] == str(other.team_id)
+
+
+# --- the kickoff scanner's device codes (M9) ------------------------------------------------
+
+
+async def test_no_device_route_answers_without_a_device_code(api: Api) -> None:
+    anonymous = api.anonymous()
+    for method, path in sorted(DEVICE_CODE):
+        response = await anonymous.request(method, path.replace("{n}", "1").replace(
+            "{baseline_id}", str(uuid.uuid4())), json={})  # fmt: skip
+        assert response.status_code == 401, (method, path)
+        assert response.json()["detail"]["code"] == "bad_device_code"
+
+
+async def test_a_session_is_not_a_device_code(api: Api) -> None:
+    organiser = await api.organiser()
+    assert (await organiser.get("/api/scan/config")).status_code == 401
+
+
+async def test_a_device_code_reaches_only_its_own_baseline(api: Api, clock: FakeClock) -> None:
+    a = await started(api, clock, kickoff_ago=timedelta(hours=-2))
+    b = await started(api, clock, name="Comet", organiser=a.organiser, event=a.event)
+    _, code_a = await add_device(a, "laptop")
+    _, code_b = await add_device(b, "laptop")
+    receipt = await scan(a, code_a, {"a.js": b"a"})
+    b_client = device_client(b, code_b)
+
+    config = (await b_client.get("/api/scan/config")).json()
+    assert (config["team_name"], config["replaces_earlier"]) == ("Comet", False)
+    part = await put_part(b_client, receipt["baseline_id"], 2, make_part({"x.js": b"x"}))
+    seal = await b_client.post(
+        f"/api/scan/{receipt['baseline_id']}/seal", json=seal_body(config, {}, 0)
+    )
+    assert part.status_code == 404
+    assert seal.status_code == 404
+    assert code_a not in (await a.client.get("/api/team/devices")).text
+    # A device code is not a session: it opens no team page.
+    assert (await b_client.get("/api/team/devices")).status_code == 401

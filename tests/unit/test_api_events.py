@@ -8,9 +8,11 @@ from sqlalchemy import text
 
 from api.csv_import import MAX_BYTES
 from tests.api_helpers import EVENT, PUBLIC_BASE_URL, Api
+from tests.baseline_flow import add_device, scan
 from tests.factories import RUBRIC, T0
 from tests.fakes import FakeClock
 from tests.helpers import Sessions
+from tests.team_flow import started
 
 # --- events ----------------------------------------------------------------------------------
 
@@ -188,6 +190,60 @@ CSV = (
     "Rocket,ada@example.com,https://github.com/acme/rocket\n"
     "Comet,,\n"
 )
+
+
+# --- the kickoff scan's settings (M9) --------------------------------------------------------
+
+
+async def test_an_event_states_its_scan_settings(api: Api) -> None:
+    organiser = await api.organiser()
+    event = await api.event(organiser)
+    assert event["scan_extensions"][:5] == [".js", ".jsx", ".ts", ".tsx", ".py"]
+    assert len(event["scan_extensions"]) == 12
+    assert (event["common_code_min_teams"], event["baseline_retention_days"]) == (3, 30)
+
+    edited = await organiser.patch(
+        f"/api/events/{event['id']}",
+        json={"scan_extensions": [".PY", ".rs"], "common_code_min_teams": 2,
+              "baseline_retention_days": 7},
+    )  # fmt: skip
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["scan_extensions"] == [".py", ".rs"]
+    assert (body["common_code_min_teams"], body["baseline_retention_days"]) == (2, 7)
+    for field, value in (("common_code_min_teams", 1), ("baseline_retention_days", 366)):
+        refused = await organiser.post("/api/events", json={**EVENT, field: value})
+        assert refused.status_code == 422, field
+
+
+@pytest.mark.parametrize("extension", [".env", ".pem", ".key", "py", ".TOO-LONG-AN-EXTENSION"])
+async def test_an_extension_that_could_hold_secrets_or_is_malformed_is_refused(
+    api: Api, extension: str
+) -> None:
+    organiser = await api.organiser()
+    created = await organiser.post("/api/events", json={**EVENT, "scan_extensions": [extension]})
+    assert created.status_code == 422
+    event = await api.event(organiser)
+    patched = await organiser.patch(
+        f"/api/events/{event['id']}", json={"scan_extensions": [".py", extension]}
+    )
+    assert patched.status_code == 422
+
+
+async def test_extensions_freeze_once_a_baseline_is_sealed(api: Api, clock: FakeClock) -> None:
+    flow = await started(api, clock, kickoff_ago=timedelta(hours=-2))
+    path = f"/api/events/{flow.event['id']}"
+    before = await flow.organiser.patch(path, json={"scan_extensions": [".py", ".js"]})
+    assert before.status_code == 200
+    _, code = await add_device(flow, "laptop")
+    await scan(flow, code, {"a.js": b"let a = 1;"})
+
+    frozen = await flow.organiser.patch(path, json={"scan_extensions": [".py"]})
+    same = await flow.organiser.patch(path, json={"scan_extensions": [".py", ".js"]})
+    other = await flow.organiser.patch(path, json={"baseline_retention_days": 10})
+
+    assert frozen.status_code == 409 and frozen.json()["detail"]["code"] == "extensions_frozen"
+    assert same.status_code == 200 and other.status_code == 200
 
 
 async def test_teams_are_imported_from_csv(api: Api, sessions: Sessions) -> None:

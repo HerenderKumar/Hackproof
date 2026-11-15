@@ -5,12 +5,14 @@ Every route under `/api` names the roles it allows by depending on `Organiser`, 
 """
 
 from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Request
+from fastapi import Depends, Header, Request
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from api.auth import COOKIE_NAME, Role, Session
+from api.auth import COOKIE_NAME, Role, Session, hash_token
 from api.errors import api_error
 from core.db import models
 
@@ -52,3 +54,35 @@ TeamUser = Annotated[Session, Depends(require("team"))]
 JudgeUser = Annotated[Session, Depends(require("judge"))]
 Reader = Annotated[Session, Depends(require("organiser", "judge"))]
 AnyUser = Annotated[Session, Depends(require("organiser", "judge", "team"))]
+
+
+# --- the kickoff scanner (M9) ----------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Device:
+    """A device reached by its own code: the scanner holds no session."""
+
+    device: models.BaselineDevice
+    team: models.Team
+    event: models.Event
+
+
+async def device_from_code(db: Db, x_device_code: Annotated[str | None, Header()] = None) -> Device:
+    """The device whose code is in `X-Device-Code`. A scanner route reaches only that device's
+    own baseline; the code is never a session and opens no other route."""
+    if not x_device_code or len(x_device_code) > 200:
+        raise api_error(401, "bad_device_code", "This device code is not valid.")
+    device = await db.scalar(
+        select(models.BaselineDevice).where(
+            models.BaselineDevice.code_hash == hash_token(x_device_code)
+        )
+    )
+    team = await db.get(models.Team, device.team_id) if device is not None else None
+    event = await db.get(models.Event, team.event_id) if team is not None else None
+    if device is None or team is None or event is None:
+        raise api_error(401, "bad_device_code", "This device code is not valid.")
+    return Device(device, team, event)
+
+
+DeviceAuth = Annotated[Device, Depends(device_from_code)]

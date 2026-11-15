@@ -8,7 +8,12 @@ import tarfile
 import uuid
 from collections.abc import Sequence
 from dataclasses import asdict
+from datetime import timedelta
 from pathlib import Path
+from typing import Any
+
+import httpx
+from sqlalchemy import text
 
 from core.baselines.index import build_index
 from core.baselines.parts import Entry
@@ -70,3 +75,100 @@ def stored_baseline(
     BaselineStore(root, key).write_part(baseline, 1, make_part(files))
     build_index(root, key, baseline, 1, "test", 1024 * 1024, settings)
     return baseline
+
+
+# --- through the API (M9, Task 12) ---------------------------------------------------------
+
+
+async def add_device(flow: Any, label: str = "laptop") -> tuple[dict[str, Any], str]:
+    """A device of the flow's team, and its code (shown once)."""
+    response = await flow.client.post("/api/team/devices", json={"label": label})
+    assert response.status_code == 201, response.text
+    body: dict[str, Any] = response.json()
+    return body["device"], body["code"]
+
+
+def device_client(flow: Any, code: str) -> httpx.AsyncClient:
+    """The scanner's own client: no session, only the device code."""
+    client = flow.api.anonymous()
+    client.headers["X-Device-Code"] = code
+    return client
+
+
+def seal_body(
+    config: dict[str, Any], files: dict[str, bytes], parts: int, **fields: Any
+) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "scanner_version": "1",
+        "platform": "test",
+        "extensions": config["extensions"],
+        "limited_to": None,
+        "parts": parts,
+        "files": len(files),
+        "summary": {
+            "roots": ["/"],
+            "files_found": len(files),
+            "bytes_found": sum(len(d) for d in files.values()),
+            "skipped": {"dependency": 0},
+            "keys_blanked": 0,
+            "size_limit_reached": False,
+        },
+        "unreadable": [],
+        "unreadable_more": 0,
+    }
+    return {**body, **fields}
+
+
+async def put_part(
+    client: httpx.AsyncClient, baseline_id: str, n: int, data: bytes
+) -> httpx.Response:
+    return await client.put(
+        f"/api/scan/{baseline_id}/parts/{n}",
+        content=data,
+        headers={"X-Part-Sha256": sha(data), "Content-Type": "application/octet-stream"},
+    )
+
+
+async def scan(flow: Any, code: str, files: dict[str, bytes], **seal_fields: Any) -> dict[str, Any]:
+    """A whole scan through the API: config, start, one part, seal. Returns the receipt."""
+    client = device_client(flow, code)
+    config = (await client.get("/api/scan/config")).json()
+    started = await client.post(
+        "/api/scan/start", json={"scanner_version": "1", "platform": "test"}
+    )
+    assert started.status_code == 200, started.text
+    baseline_id = started.json()["baseline_id"]
+    parts = 0
+    if files:
+        sent = await put_part(client, baseline_id, 1, make_part(files))
+        assert sent.status_code == 200, sent.text
+        parts = 1
+    sealed = await client.post(
+        f"/api/scan/{baseline_id}/seal", json=seal_body(config, files, parts, **seal_fields)
+    )
+    assert sealed.status_code == 200, sealed.text
+    receipt: dict[str, Any] = sealed.json()
+    return receipt
+
+
+async def shift_event(
+    sessions: Any,
+    event_id: str | uuid.UUID,
+    *,
+    kickoff_in: timedelta | None = None,
+    deadline_in: timedelta | None = None,
+) -> None:
+    """Move the event's times around the database's real `now()`, which the scan rules use."""
+    sets = []
+    params: dict[str, Any] = {"id": str(event_id)}
+    if kickoff_in is not None:
+        sets.append("kickoff_at = now() + :kickoff_in")
+        params["kickoff_in"] = kickoff_in
+    if deadline_in is not None:
+        sets.append("deadline_at = now() + :deadline_in")
+        params["deadline_in"] = deadline_in
+    async with sessions.begin() as session:
+        await session.execute(
+            text(f"UPDATE events SET {', '.join(sets)}, claims_lock_at = NULL WHERE id = :id"),
+            params,
+        )

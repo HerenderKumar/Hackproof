@@ -42,6 +42,17 @@ async def _event(db: Db, event_id: uuid.UUID) -> models.Event:
     return event
 
 
+async def _any_sealed(db: Db, event_id: uuid.UUID) -> bool:
+    """Whether any team of the event has a scan sealed: its extensions are fixed from then on."""
+    found = await db.scalar(
+        select(models.Baseline.id)
+        .join(models.Team, models.Team.id == models.Baseline.team_id)
+        .where(models.Team.event_id == event_id, models.Baseline.sealed_at.is_not(None))
+        .limit(1)
+    )
+    return found is not None
+
+
 @router.post("/events", status_code=201)
 async def create_event(body: EventIn, _: Organiser, db: Db) -> EventOut:
     event = models.Event(**body.model_dump(mode="python"))
@@ -68,6 +79,12 @@ async def edit_event(event_id: uuid.UUID, body: EventPatch, _: Organiser, db: Db
     except ValueError as exc:
         raise api_error(422, "event_invalid", str(exc)) from exc
 
+    if merged.scan_extensions != event.scan_extensions and await _any_sealed(db, event_id):
+        raise api_error(
+            409,
+            "extensions_frozen",
+            "A device has already been scanned with these extensions; they can no longer change.",
+        )
     rubric = merged.model_dump()["rubric"]
     if rubric != event.rubric:
         if event.scores_locked:

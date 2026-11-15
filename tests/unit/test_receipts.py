@@ -65,3 +65,40 @@ def test_changing_any_field_changes_the_hash(field: str) -> None:
     changed = {**FIELDS, field: 3 if field == "rubric_version" else f"{FIELDS[field]}x"}
 
     assert receipt_hash(changed) != receipt_hash(FIELDS)
+
+
+def test_a_baseline_receipt_hash_recomputes_from_its_fields() -> None:
+    from core.db import models
+    from core.receipts import baseline_receipt_fields
+
+    team = models.Team(id=TEAM, name="Rocket")
+    device = models.BaselineDevice(id=uuid.uuid4(), team_id=TEAM, label="laptop")
+    baseline = models.Baseline(
+        id=uuid.UUID("44444444-4444-4444-4444-444444444444"),
+        device_id=device.id,
+        team_id=TEAM,
+        status="sealed",
+        sealed_at=AT.astimezone(timezone(timedelta(hours=5, minutes=30))),
+        late=False,
+        complete=True,
+        files=12,
+        bytes_received=4096,
+        manifest_sha256="e" * 64,
+        scanner_version="1",
+    )
+    fields = baseline_receipt_fields(baseline, device, team)
+    assert fields == {
+        "baseline_id": "44444444-4444-4444-4444-444444444444",
+        "team_id": str(TEAM),
+        "team_name": "Rocket",
+        "device_label": "laptop",
+        "sealed_at": "2026-11-14T09:30:15.120000+00:00",
+        "late": False,
+        "complete": True,
+        "files": 12,
+        "bytes": 4096,
+        "manifest_sha256": "e" * 64,
+        "scanner_version": "1",
+    }
+    assert receipt_hash(fields) == hash_json(fields)
+    assert receipt_hash({**fields, "late": True}) != receipt_hash(fields)

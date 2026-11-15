@@ -15,7 +15,34 @@ from pydantic import (
     model_validator,
 )
 
+from core.db.models import SCAN_EXTENSIONS
+
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+
+# The kickoff scan's extensions (M9): never one whose files are usually secrets or data.
+SECRET_EXTENSIONS = frozenset(
+    {".env", ".pem", ".key", ".p12", ".pfx", ".crt", ".cer", ".kdbx", ".db", ".sqlite"}
+)
+_EXTENSION = re.compile(r"^\.[a-z0-9+_-]{1,10}$")
+
+
+def check_scan_extensions(values: list[str]) -> list[str]:
+    """1 to 40 distinct extensions, lower-cased, none of SECRET_EXTENSIONS."""
+    cleaned = [value.strip().lower() for value in values]
+    if not 1 <= len(cleaned) <= 40:
+        raise ValueError("scan_extensions must list 1 to 40 extensions")
+    for ext in cleaned:
+        if not _EXTENSION.match(ext):
+            raise ValueError(
+                f"{ext!r} is not an extension like .py: a dot, then 1 to 10 of a-z 0-9 + _ -"
+            )
+        if ext in SECRET_EXTENSIONS:
+            raise ValueError(
+                f"{ext} files usually hold secrets or data, so a scan never reads them"
+            )
+    if len(set(cleaned)) != len(cleaned):
+        raise ValueError("scan_extensions must be distinct")
+    return cleaned
 
 
 class Strict(BaseModel):
@@ -45,6 +72,15 @@ class EventIn(Strict):
     poll_interval_seconds: int = Field(default=300, ge=30, le=3600)
     # When teams' claims freeze. Left out, it falls two thirds of the way through the event.
     claims_lock_at: AwareDatetime | None = None
+    # The kickoff scan (M9).
+    scan_extensions: list[str] = Field(default_factory=lambda: list(SCAN_EXTENSIONS))
+    common_code_min_teams: int = Field(default=3, ge=2)
+    baseline_retention_days: int = Field(default=30, ge=1, le=365)
+
+    @field_validator("scan_extensions")
+    @classmethod
+    def _extensions(cls, values: list[str]) -> list[str]:
+        return check_scan_extensions(values)
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
@@ -69,6 +105,9 @@ class EventPatch(Strict):
     bulk_push_window_minutes: int | None = None
     poll_interval_seconds: int | None = None
     claims_lock_at: AwareDatetime | None = None
+    scan_extensions: list[str] | None = None
+    common_code_min_teams: int | None = None
+    baseline_retention_days: int | None = None
 
 
 class EventOut(BaseModel):
@@ -87,6 +126,9 @@ class EventOut(BaseModel):
     poll_interval_seconds: int
     scores_locked: bool
     created_at: datetime
+    scan_extensions: list[str]
+    common_code_min_teams: int
+    baseline_retention_days: int
 
 
 # --- teams, judges, links --------------------------------------------------------------------

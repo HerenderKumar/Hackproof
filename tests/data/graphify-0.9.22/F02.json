@@ -1,0 +1,324 @@
+{
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "nodes": [
+    {
+      "id": "main",
+      "label": "main.py",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_newitem",
+      "label": "NewItem",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "basemodel",
+      "label": "BaseModel",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_item",
+      "label": "Item",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L19",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_health",
+      "label": "health()",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L28",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_create_item",
+      "label": "create_item()",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L33",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_read_item",
+      "label": "read_item()",
+      "file_type": "code",
+      "source_file": "main.py",
+      "source_location": "L40",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_rationale_1",
+      "label": "A tiny pantry API: add an item, then read it back.",
+      "file_type": "rationale",
+      "source_file": "main.py",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme",
+      "label": "README.md",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_pantry",
+      "label": "Pantry",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_run_it",
+      "label": "Run it",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_api",
+      "label": "API",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L14",
+      "_origin": "ast"
+    }
+  ],
+  "links": [
+    {
+      "source": "main",
+      "target": "os",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "itertools",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L4",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "typing",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "uvicorn",
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "fastapi",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "pydantic",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L9",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_newitem",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_newitem",
+      "target": "basemodel",
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_item",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_item",
+      "target": "main_newitem",
+      "relation": "inherits",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L19",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_health",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_create_item",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_create_item",
+      "target": "main_newitem",
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_create_item",
+      "target": "main_item",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L33",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_read_item",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_read_item",
+      "target": "main_item",
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_create_item",
+      "target": "main_item",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_rationale_1",
+      "target": "main",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "source_file": "main.py",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme",
+      "target": "readme_pantry",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme_pantry",
+      "target": "readme_run_it",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme_pantry",
+      "target": "readme_api",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    }
+  ]
+}

@@ -1,0 +1,333 @@
+{
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "nodes": [
+    {
+      "id": "pkg_wordcount",
+      "label": "wordcount",
+      "file_type": "code",
+      "type": "package",
+      "ecosystem": "go",
+      "source_file": "go.mod",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "main",
+      "label": "main.go",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_countrequest",
+      "label": "countRequest",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L11",
+      "_origin": "ast"
+    },
+    {
+      "id": "src_countresponse",
+      "label": "countResponse",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L15",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_countwords",
+      "label": "countWords()",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L20",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_wordcount",
+      "label": "wordcount()",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L24",
+      "_origin": "ast"
+    },
+    {
+      "id": "responsewriter",
+      "label": "ResponseWriter",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "request",
+      "label": "Request",
+      "file_type": "code",
+      "source_file": "",
+      "source_location": "",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_writejson",
+      "label": "writeJSON()",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L34",
+      "_origin": "ast"
+    },
+    {
+      "id": "main_main",
+      "label": "main()",
+      "file_type": "code",
+      "source_file": "main.go",
+      "source_location": "L40",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme",
+      "label": "README.md",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_word_counter",
+      "label": "Word counter",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_run_it",
+      "label": "Run it",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_api",
+      "label": "API",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L13",
+      "_origin": "ast"
+    }
+  ],
+  "links": [
+    {
+      "source": "main",
+      "target": "go_pkg_encoding_json",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L4",
+      "weight": 1.0,
+      "context": "import",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "go_pkg_log",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L5",
+      "weight": 1.0,
+      "context": "import",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "go_pkg_net_http",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L6",
+      "weight": 1.0,
+      "context": "import",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "go_pkg_os",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L7",
+      "weight": 1.0,
+      "context": "import",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "go_pkg_strings",
+      "relation": "imports_from",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L8",
+      "weight": 1.0,
+      "context": "import",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "src_countrequest",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L11",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "src_countresponse",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_countwords",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L20",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_wordcount",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L24",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_wordcount",
+      "target": "responsewriter",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L24",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast"
+    },
+    {
+      "source": "main_wordcount",
+      "target": "request",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L24",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_writejson",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L34",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_writejson",
+      "target": "responsewriter",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L34",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "_origin": "ast"
+    },
+    {
+      "source": "main",
+      "target": "main_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L40",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_wordcount",
+      "target": "main_writejson",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L28",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_wordcount",
+      "target": "main_countwords",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L31",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "main_main",
+      "target": "main_writejson",
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "main.go",
+      "source_location": "L47",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme",
+      "target": "readme_word_counter",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme_word_counter",
+      "target": "readme_run_it",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme_word_counter",
+      "target": "readme_api",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast"
+    }
+  ]
+}

@@ -1,0 +1,368 @@
+{
+  "input_tokens": 0,
+  "output_tokens": 0,
+  "nodes": [
+    {
+      "id": "package",
+      "label": "package.json",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_name",
+      "label": "name",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L2",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_version",
+      "label": "version",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L3",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_private",
+      "label": "private",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L4",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_description",
+      "label": "description",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L5",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_main",
+      "label": "main",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L6",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_scripts",
+      "label": "scripts",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L7",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_scripts_start",
+      "label": "start",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L8",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_engines",
+      "label": "engines",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L10",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_engines_node",
+      "label": "node",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L11",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_dependencies",
+      "label": "dependencies",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L13",
+      "_origin": "ast"
+    },
+    {
+      "id": "package_dependencies_express",
+      "label": "express",
+      "file_type": "code",
+      "source_file": "package.json",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "express",
+      "label": "express",
+      "file_type": "concept",
+      "source_file": "package.json",
+      "source_location": "L14",
+      "_origin": "ast"
+    },
+    {
+      "id": "server",
+      "label": "server.js",
+      "file_type": "code",
+      "source_file": "server.js",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "server_express",
+      "label": "express",
+      "file_type": "code",
+      "source_file": "server.js",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "server_app",
+      "label": "app",
+      "file_type": "code",
+      "source_file": "server.js",
+      "source_location": "L3",
+      "_origin": "ast"
+    },
+    {
+      "id": "server_splittotal",
+      "label": "splitTotal()",
+      "file_type": "code",
+      "source_file": "server.js",
+      "source_location": "L8",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme",
+      "label": "README.md",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_bill_splitter",
+      "label": "Bill splitter",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_run_it",
+      "label": "Run it",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L6",
+      "_origin": "ast"
+    },
+    {
+      "id": "readme_api",
+      "label": "API",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": "L15",
+      "_origin": "ast"
+    }
+  ],
+  "links": [
+    {
+      "source": "package",
+      "target": "package_name",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L2",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_version",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_private",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L4",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_description",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L5",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_main",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L6",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_scripts",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L7",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package_scripts",
+      "target": "package_scripts_start",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_engines",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L10",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package_engines",
+      "target": "package_engines_node",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L11",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package",
+      "target": "package_dependencies",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L13",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package_dependencies",
+      "target": "package_dependencies_express",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L14",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "package_dependencies_express",
+      "target": "express",
+      "relation": "imports",
+      "confidence": "EXTRACTED",
+      "source_file": "package.json",
+      "source_location": "L14",
+      "weight": 1.0,
+      "context": "import",
+      "_origin": "ast"
+    },
+    {
+      "source": "server",
+      "target": "ref_express",
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "server.js",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "server",
+      "target": "server_express",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server.js",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "server",
+      "target": "server_app",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server.js",
+      "source_location": "L3",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "server",
+      "target": "server_splittotal",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "server.js",
+      "source_location": "L8",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme",
+      "target": "readme_bill_splitter",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L1",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme_bill_splitter",
+      "target": "readme_run_it",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L6",
+      "weight": 1.0,
+      "_origin": "ast"
+    },
+    {
+      "source": "readme_bill_splitter",
+      "target": "readme_api",
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "README.md",
+      "source_location": "L15",
+      "weight": 1.0,
+      "_origin": "ast"
+    }
+  ]
+}

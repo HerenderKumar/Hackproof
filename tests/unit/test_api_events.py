@@ -1,8 +1,9 @@
 """Organiser set-up: the event, team import, judges and invitation links (section 5.1)."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
+import pytest
 from sqlalchemy import text
 
 from api.csv_import import MAX_BYTES
@@ -104,6 +105,66 @@ async def test_an_edit_cannot_put_the_deadline_before_the_kickoff(api: Api) -> N
 
     assert response.status_code == 422
     assert (await organiser.get(f"/api/events/{event['id']}")).json() == event
+
+
+def _at(value: str) -> datetime:
+    return datetime.fromisoformat(value)
+
+
+async def test_an_event_states_its_claims_lock(api: Api) -> None:
+    organiser = await api.organiser()
+
+    event = await api.event(organiser)
+    explicit = await api.event(
+        organiser, name="Spring Hack", claims_lock_at=(T0 + timedelta(hours=20)).isoformat()
+    )
+    patched = await organiser.patch(
+        f"/api/events/{event['id']}",
+        json={"claims_lock_at": (T0 + timedelta(hours=12)).isoformat()},
+    )
+
+    assert _at(event["claims_lock_at"]) == T0 + timedelta(hours=16)  # two thirds of 24 hours
+    assert _at(explicit["claims_lock_at"]) == T0 + timedelta(hours=20)
+    assert patched.status_code == 200
+    assert _at(patched.json()["claims_lock_at"]) == T0 + timedelta(hours=12)
+
+
+async def test_the_default_lock_follows_an_edited_deadline(api: Api) -> None:
+    organiser = await api.organiser()
+    event = await api.event(organiser)
+
+    await organiser.patch(f"/api/events/{event['id']}", json={"name": "Renamed"})
+    later = await organiser.patch(
+        f"/api/events/{event['id']}", json={"deadline_at": (T0 + timedelta(hours=48)).isoformat()}
+    )
+
+    assert later.status_code == 200
+    assert _at(later.json()["claims_lock_at"]) == T0 + timedelta(hours=32)
+
+
+@pytest.mark.parametrize("offset", [timedelta(seconds=-1), timedelta(hours=24, seconds=1)])
+async def test_a_lock_outside_the_event_is_a_422(api: Api, offset: timedelta) -> None:
+    organiser = await api.organiser()
+    event = await api.event(organiser)
+    lock = (T0 + offset).isoformat()
+
+    created = await organiser.post("/api/events", json={**EVENT, "claims_lock_at": lock})
+    patched = await organiser.patch(f"/api/events/{event['id']}", json={"claims_lock_at": lock})
+
+    assert created.status_code == 422
+    assert (patched.status_code, patched.json()["detail"]["code"]) == (422, "event_invalid")
+    assert (await organiser.get(f"/api/events/{event['id']}")).json() == event
+
+
+async def test_moving_the_deadline_before_the_lock_is_a_422(api: Api) -> None:
+    organiser = await api.organiser()
+    event = await api.event(organiser, claims_lock_at=(T0 + timedelta(hours=20)).isoformat())
+
+    response = await organiser.patch(
+        f"/api/events/{event['id']}", json={"deadline_at": (T0 + timedelta(hours=19)).isoformat()}
+    )
+
+    assert (response.status_code, response.json()["detail"]["code"]) == (422, "event_invalid")
 
 
 async def test_the_rubric_is_frozen_once_scores_are_locked(api: Api, sessions: Sessions) -> None:

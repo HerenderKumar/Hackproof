@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     llm_timeout_s: int = 60
     llm_replay_dir: Path = Path("fixtures/llm")
     draft_max_tokens: int = 16000
+    # What one team may ask for (M7): each claims version is a model call, each submission a
+    # final run.
+    max_claims_versions: int = 20
+    max_redrafts: int = 3
+    max_submissions: int = 10
     audit_max_steps: int = 12
     audit_max_tokens: int = 60000
     audit_timeout_s: int = 120

@@ -24,8 +24,15 @@ from api.schemas import (
     SkippedRow,
 )
 from core.db import models
+from core.events import claims_lock_at
 
 router = APIRouter(prefix="/api", tags=["organiser"])
+
+
+def _out(event: models.Event) -> EventOut:
+    """The event as the organiser reads it, with the claims lock that is in effect."""
+    stored = {name: getattr(event, name) for name in EventOut.model_fields}
+    return EventOut.model_validate({**stored, "claims_lock_at": claims_lock_at(event)})
 
 
 async def _event(db: Db, event_id: uuid.UUID) -> models.Event:
@@ -41,19 +48,21 @@ async def create_event(body: EventIn, _: Organiser, db: Db) -> EventOut:
     db.add(event)
     await db.commit()
     await db.refresh(event)
-    return EventOut.model_validate(event)
+    return _out(event)
 
 
 @router.get("/events/{event_id}")
 async def read_event(event_id: uuid.UUID, _: Organiser, db: Db) -> EventOut:
-    return EventOut.model_validate(await _event(db, event_id))
+    return _out(await _event(db, event_id))
 
 
 @router.patch("/events/{event_id}")
 async def edit_event(event_id: uuid.UUID, body: EventPatch, _: Organiser, db: Db) -> EventOut:
     event = await _event(db, event_id)
     changes = body.model_dump(exclude_unset=True, exclude_none=True, mode="python")
-    current = EventOut.model_validate(event).model_dump(include=set(EventIn.model_fields))
+    # The stored values, not the view: an unset claims lock stays unset, so it keeps following
+    # the event's times.
+    current = {field: getattr(event, field) for field in EventIn.model_fields}
     try:
         merged = EventIn.model_validate({**current, **changes})
     except ValueError as exc:
@@ -69,7 +78,7 @@ async def edit_event(event_id: uuid.UUID, body: EventPatch, _: Organiser, db: Db
         setattr(event, field, value)
     await db.commit()
     await db.refresh(event)
-    return EventOut.model_validate(event)
+    return _out(event)
 
 
 @router.post("/events/{event_id}/teams/import")

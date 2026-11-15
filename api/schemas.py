@@ -43,11 +43,16 @@ class EventIn(Strict):
     bulk_push_lines: int = Field(default=2000, ge=1)
     bulk_push_window_minutes: int = Field(default=60, ge=1, le=1440)
     poll_interval_seconds: int = Field(default=300, ge=30, le=3600)
+    # When teams' claims freeze. Left out, it falls two thirds of the way through the event.
+    claims_lock_at: AwareDatetime | None = None
 
     @model_validator(mode="after")
     def _consistent(self) -> Self:
         if self.deadline_at <= self.kickoff_at:
             raise ValueError("deadline_at must be after kickoff_at")
+        lock = self.claims_lock_at
+        if lock is not None and not self.kickoff_at <= lock <= self.deadline_at:
+            raise ValueError("claims_lock_at must lie between kickoff_at and deadline_at")
         ids = [criterion.id for criterion in self.rubric]
         if len(set(ids)) != len(ids):
             raise ValueError("rubric criteria must have distinct ids")
@@ -63,6 +68,7 @@ class EventPatch(Strict):
     bulk_push_lines: int | None = None
     bulk_push_window_minutes: int | None = None
     poll_interval_seconds: int | None = None
+    claims_lock_at: AwareDatetime | None = None
 
 
 class EventOut(BaseModel):
@@ -72,6 +78,7 @@ class EventOut(BaseModel):
     name: str
     kickoff_at: datetime
     deadline_at: datetime
+    claims_lock_at: datetime  # the lock in effect: the event's own, or the default
     rubric_version: int
     rubric: list[dict[str, Any]]
     policy_text: str

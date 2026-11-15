@@ -4,8 +4,8 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from core.claims import claims_hash
 from core.db import models
-from core.hashing import hash_json
 from core.specs import spec_hash
 from tests import spec_examples
 
@@ -105,7 +105,7 @@ def make_claims(
         team_id=team_id,
         version=version,
         items=items,
-        claims_hash=hash_json(items),
+        claims_hash=claims_hash(problem_statement, explanation, items),
         problem_statement=problem_statement,
         explanation=explanation,
     )

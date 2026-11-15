@@ -14,6 +14,7 @@ def test_defaults_match_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
         "DATABASE_URL", "LLM_MODE", "REPO_PROVIDER", "BUILD_TIMEOUT_S",
         "LLM_BASE_URL", "DRAFT_MODEL", "AUDIT_MODEL", "BRIEF_MODEL", "FAST_MODEL",
         "LLM_REPLAY_DIR", "DRAFT_MAX_TOKENS",
+        "MAX_CLAIMS_VERSIONS", "MAX_REDRAFTS", "MAX_SUBMISSIONS",
     ):  # fmt: skip
         monkeypatch.delenv(name, raising=False)
     s = make()
@@ -32,6 +33,8 @@ def test_defaults_match_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (s.audit_max_steps, s.audit_max_tokens, s.audit_timeout_s) == (12, 60000, 120)
     assert s.llm_mode == "live"
     assert (s.llm_replay_dir, s.draft_max_tokens) == (Path("fixtures/llm"), 16000)
+    # What one team may ask of the model and the worker (M7).
+    assert (s.max_claims_versions, s.max_redrafts, s.max_submissions) == (20, 3, 10)
     assert s.repo_provider == "github"
 
 

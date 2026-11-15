@@ -45,6 +45,8 @@ class Event(Base):
     name: Mapped[str]
     kickoff_at: Mapped[datetime]
     deadline_at: Mapped[datetime]
+    # When claims freeze; NULL means two thirds of the way through (core.events.claims_lock_at).
+    claims_lock_at: Mapped[datetime | None]
     rubric_version: Mapped[int] = mapped_column(server_default=text("1"))
     rubric: Mapped[Any] = _json()
     policy_text: Mapped[str] = mapped_column(server_default=text("''"))

@@ -12,6 +12,9 @@ x-shared-env: &shared-env
   RAILPACK_VERSION: ${RAILPACK_VERSION:-0.43.0}
   RUNNER_VERSION: ${RUNNER_VERSION:-1}
   LINK_TTL_DAYS: ${LINK_TTL_DAYS:-7}
+  MAX_CLAIMS_VERSIONS: ${MAX_CLAIMS_VERSIONS:-20}
+  MAX_REDRAFTS: ${MAX_REDRAFTS:-3}
+  MAX_SUBMISSIONS: ${MAX_SUBMISSIONS:-10}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
 # A fault that repeats (an outage, a crash loop) must not fill the disk with logs.

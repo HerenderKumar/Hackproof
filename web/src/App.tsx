@@ -2,17 +2,11 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { Notice } from "@/components/ui";
 import { Claims } from "@/pages/Claims";
+import { Receipt } from "@/pages/Receipt";
 import { Redeem } from "@/pages/Redeem";
+import { Submit } from "@/pages/Submit";
 import { TeamHome } from "@/pages/TeamHome";
 import { Tests } from "@/pages/Tests";
-
-function Later({ title }: { title: string }) {
-  return (
-    <Notice tone="info" title={title}>
-      This page is not built yet.
-    </Notice>
-  );
-}
 
 function NotFound() {
   return (
@@ -35,8 +29,8 @@ export function App() {
       <Route path="/team" element={<Layout><TeamHome /></Layout>} />
       <Route path="/team/claims" element={<Layout><Claims /></Layout>} />
       <Route path="/team/tests" element={<Layout><Tests /></Layout>} />
-      <Route path="/team/submit" element={<Layout><Later title="Submit" /></Layout>} />
-      <Route path="/team/receipt" element={<Layout><Later title="Receipt" /></Layout>} />
+      <Route path="/team/submit" element={<Layout><Submit /></Layout>} />
+      <Route path="/team/receipt" element={<Layout><Receipt /></Layout>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );

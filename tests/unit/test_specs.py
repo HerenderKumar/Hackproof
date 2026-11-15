@@ -21,6 +21,7 @@ from core.specs import (
     spec_hash,
     test_spec_hash,
 )
+from tests import spec_examples
 
 P1 = {"id": "p1", "input": {"total": 100, "people": 4}, "expected": {}, "boundary": False}
 F1 = {"id": "f1", "input": {"total": 100.00, "people": 3}, "expected": {}, "boundary": False}
@@ -179,7 +180,7 @@ def test_test_spec_hash_ignores_order() -> None:
 
 def test_parse_spec_dispatches_on_kind() -> None:
     startup = {"kind": "startup", "claim_type": "startup", "steps": [{"health_path": "/"}]}
-    ui = {"kind": "ui", "claim_id": "c2", "claim_type": "ui_workflow", "steps": []}
+    ui = spec_examples.F05
 
     assert isinstance(parse_spec(startup), StartupSpec)
     assert isinstance(parse_spec(ui), UiSpec)

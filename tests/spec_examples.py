@@ -146,3 +146,41 @@ F07: dict[str, Any] = {
         {"id": "f3", "input": {"text": "  spaced   out\ttext\n"}, "expected": {"words": 3}, "boundary": True},
     ],
 }  # fmt: skip
+
+
+# F05's UI test, written from its claims.json alone (M11 design, part 11).
+F05: dict[str, Any] = {
+    "kind": "ui",
+    "claim_id": "c1",
+    "claim_type": "ui_workflow",
+    "steps": [
+        {"id": "open", "action": "goto", "path": "/"},
+        {
+            "id": "type",
+            "action": "fill",
+            "locator": {"label": "New item"},
+            "value": "{{case.input.item}}",
+        },
+        {"id": "add", "action": "click", "locator": {"role": "button", "name": "Add"}},
+        {
+            "id": "listed",
+            "action": "expect_text",
+            "locator": {"role": "list", "name": "Items"},
+            "text": "{{case.input.item}}",
+        },
+        {"id": "cleared", "action": "expect_value", "locator": {"label": "New item"}, "value": ""},
+    ],
+    "practice_cases": [
+        {"id": "p1", "input": {"item": "Sunscreen"}, "expected": {}, "boundary": False}
+    ],
+    "final_cases": [
+        {"id": "f1", "input": {"item": "Passport"}, "expected": {}, "boundary": False},
+        {
+            "id": "f2",
+            "input": {"item": "Socks & sandals <2 pairs>"},
+            "expected": {},
+            "boundary": True,
+        },
+        {"id": "f3", "input": {"item": "नमस्ते 🧦"}, "expected": {}, "boundary": True},
+    ],
+}

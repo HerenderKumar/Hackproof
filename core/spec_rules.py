@@ -15,15 +15,17 @@ from typing import Any
 
 from core.assertions import readable
 from core.hashing import canonical_json
-from core.specs import ApiSpec, ApiStep, Assertion
+from core.specs import ACTING, EXPECTING, ApiSpec, ApiStep, Assertion, UiSpec, UiStep
 from core.templating import LOOKUP, PLACEHOLDER
 
 _ALLOWED = range(200, 300)
 _REFUSED = (401, 403)
 
 
-def problems(spec: ApiSpec) -> list[str]:
+def problems(spec: ApiSpec | UiSpec) -> list[str]:
     """Why `spec` falls short of the rules. Empty when it meets every one."""
+    if isinstance(spec, UiSpec):
+        return ui_problems(spec)
     found = [*_placeholder_problems(spec), *_path_problems(spec), *_status_problems(spec)]
     by_type = _BY_TYPE.get(spec.claim_type)
     if by_type is not None:
@@ -137,6 +139,59 @@ _BY_TYPE: dict[str, Callable[[ApiSpec], Iterable[str]]] = {
     "classification": _classification,
     "authentication": _authentication,
 }
+
+
+# --- UI tests (M11 design, part 2) --------------------------------------------------------------
+
+
+def ui_problems(spec: UiSpec) -> list[str]:
+    """Section 6.1's `ui_workflow` minimum: act on the page, then check the result, and check it
+    against the case, so a page that ignores its input cannot pass the hidden cases."""
+    found: list[str] = []
+    steps = spec.steps
+    if steps[0].action != "goto":
+        found.append("a UI test starts with a goto step that opens a page")
+    if not any(step.action in ACTING for step in steps):
+        found.append("a UI test does something on the page: a fill, click, select or press step")
+    if steps[-1].action not in EXPECTING:
+        found.append(
+            "a UI test ends by checking the result: its last step is expect_visible, "
+            "expect_text, expect_value or expect_url"
+        )
+    expecting = [step for step in steps if step.action in EXPECTING]
+    if expecting and not any(_ui_uses_case(step) for step in expecting):
+        found.append(
+            "a UI test checks the result against the case: no expect step uses "
+            "{{case.input.name}} or {{case.expected.name}}"
+        )
+    found.extend(_ui_placeholder_problems(spec))
+    return found
+
+
+def _ui_fields(step: UiStep) -> list[Any]:
+    locator = step.locator.model_dump() if step.locator is not None else None
+    return [step.path, step.value, step.text, step.key, locator]
+
+
+def _ui_uses_case(step: UiStep) -> bool:
+    return any(name.startswith("case.") for name in _placeholders(_ui_fields(step)))
+
+
+def _ui_placeholder_problems(spec: UiSpec) -> Iterator[str]:
+    cases = [*spec.practice_cases, *spec.final_cases]
+    for step in spec.steps:
+        for lookup in dict.fromkeys(_placeholders(_ui_fields(step))):
+            uses = f'step "{step.id}" uses {{{{{lookup}}}}}'
+            if not LOOKUP.match(lookup) or lookup.startswith("saved."):
+                yield (
+                    f"{uses}, which is not a {{{{case.input.name}}}} or "
+                    "{{case.expected.name}} placeholder"
+                )
+                continue
+            field, name = lookup.split(".")[1:3]
+            missing = [case.id for case in cases if name not in getattr(case, field)]
+            if missing:
+                yield f'{uses}, but {field} "{name}" is missing from case {", ".join(missing)}'
 
 
 # --- reading a step ------------------------------------------------------------------------------

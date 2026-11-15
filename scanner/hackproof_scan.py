@@ -557,7 +557,8 @@ def _when(text: str) -> datetime:
 
 
 def _yes(ask: Callable[[str], str], question: str) -> bool:
-    return ask(question).strip().lower() == "yes"
+    # Only the letters count: a stray key typed while the scanner started ("\\yes") still says yes.
+    return "".join(ch for ch in ask(question).lower() if ch.isalpha()) == "yes"
 
 
 def _introduce(config: dict[str, Any], out: TextIO) -> None:

@@ -74,7 +74,7 @@ function Teams({ board }: { board: Dashboard }) {
                   </td>
                   <td className="px-2 py-2">
                     {t.repo_url ? (
-                      <span className="break-all font-mono text-xs">{t.repo_url.replace(/^https?:\/\//, "")}</span>
+                      <span className="whitespace-nowrap font-mono text-xs">{t.repo_url.replace(/^https?:\/\//, "")}</span>
                     ) : (
                       <span className="text-xs text-amber-700">not registered</span>
                     )}
@@ -247,24 +247,40 @@ export function OrgHome() {
           Kickoff {when(b.event.kickoff_at)} · deadline {when(b.event.deadline_at)}
         </p>
         {others.length > 0 && (
-          <p className="mt-1 text-sm text-neutral-600">
-            Other events:{" "}
-            {others.map((e, i) => (
-              <Fragment key={e.id}>
-                {i > 0 && " · "}
-                <Link className="underline" to={`/org?event=${e.id}`}>
-                  {e.name}
-                </Link>
-              </Fragment>
-            ))}
-          </p>
+          <details className="mt-1 text-sm text-neutral-600">
+            <summary className="cursor-pointer select-none">Other events ({others.length})</summary>
+            <p className="mt-1">
+              {others.map((e, i) => (
+                <Fragment key={e.id}>
+                  {i > 0 && " · "}
+                  <Link className="underline" to={`/org?event=${e.id}`}>
+                    {e.name}
+                  </Link>
+                </Fragment>
+              ))}
+            </p>
+          </details>
         )}
       </header>
       {failed > 0 && <Notice tone="error">{failed} of the shown jobs failed. Each can be run again below.</Notice>}
       <Teams board={b} />
-      <KickoffScans eventId={b.event.id} />
       <Scores board={b} />
-      <Jobs board={b} />
+      <details className="rounded-lg border border-neutral-200 bg-white px-5 py-3 shadow-xs">
+        <summary className="cursor-pointer select-none text-base font-semibold text-neutral-900">
+          Kickoff scans and starter code
+        </summary>
+        <div className="mt-3">
+          <KickoffScans eventId={b.event.id} />
+        </div>
+      </details>
+      <details className="rounded-lg border border-neutral-200 bg-white px-5 py-3 shadow-xs">
+        <summary className="cursor-pointer select-none text-base font-semibold text-neutral-900">
+          Job log <span className="text-sm font-normal text-neutral-500">({b.jobs.length} newest{failed > 0 ? `, ${failed} failed` : ""})</span>
+        </summary>
+        <div className="mt-3">
+          <Jobs board={b} />
+        </div>
+      </details>
     </>
   );
 }

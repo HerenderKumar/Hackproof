@@ -233,7 +233,7 @@ function Timeline({ brief }: { brief: BriefData }) {
               />
               <YAxis fontSize={11} width={44} />
               <Tooltip labelFormatter={(t) => when(new Date(Number(t)).toISOString())} />
-              <ReferenceLine x={kickoff} stroke="#4f46e5" label="kickoff" />
+              <ReferenceLine x={kickoff} stroke="#4f46e5" label={{ value: "kickoff", position: "insideTopLeft", fontSize: 11, fill: "#4f46e5" }} />
               <Line type="stepAfter" dataKey="lines" stroke="#4f46e5" dot={false} name="lines of code" />
             </LineChart>
           </ResponsiveContainer>

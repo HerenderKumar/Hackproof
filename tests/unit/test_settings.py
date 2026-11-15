@@ -165,3 +165,27 @@ def test_the_baseline_limits_default_to_the_plan() -> None:
     )  # fmt: skip
     assert (s.max_devices, s.match_context_lines, s.index_concurrency) == (12, 5, 1)
     assert (s.embeddings, s.related_min_score) == ("off", 0.70)
+
+
+def test_the_model_door_is_off_by_default_and_needs_the_prune_key_when_on(tmp_path: Path) -> None:
+    base = {
+        "host_artifact_dir": tmp_path,
+        "llm_mode": "replay",
+        "repo_provider": "local",
+        "baseline_key": KEY,
+    }
+    assert make(**base).model_door == "off"
+    with pytest.raises(MissingSettingsError, match="PRUNE_API_KEY"):
+        make(**base, model_door="prune").require_for_worker()
+    on = make(**base, model_door="prune", prune_api_key="prune_x")
+    on.require_for_worker()
+    assert on.prune_key == "prune_x" and "gpt-4.1-nano" in on.door_model_list
+
+
+def test_the_prune_address_must_be_https() -> None:
+    with pytest.raises(ValueError, match="PRUNE_BASE_URL must be https"):
+        make(prune_base_url="http://api.withprune.com")
+    assert (
+        make(prune_base_url="https://api.withprune.com/").prune_base_url
+        == "https://api.withprune.com"
+    )

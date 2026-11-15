@@ -96,6 +96,17 @@ class Settings(BaseSettings):
     # 0.78 and 0.81, every unrelated pair of B1 to B6 0.575 or less.
     related_min_score: float = 0.70
 
+    # The model door (Prune design): a team's app may call a model during a run, through a door
+    # of ours that forwards to Prune under a per-run budget. Off: a run is what M4 built.
+    model_door: Literal["off", "prune"] = "off"
+    prune_api_key: SecretStr | None = None
+    prune_base_url: str = "https://api.withprune.com"
+    door_image: str = "hackproof-door:1"
+    door_models: str = "gpt-4.1-nano,gpt-4o-mini,gpt-5-nano,claude-haiku-4-5"
+    door_run_budget_usd: float = 0.05
+    door_max_calls: int = 20
+    door_timeout_s: float = 60.0
+
     # Worker
     watch_concurrency: int = 4
     heavy_concurrency: int = 1
@@ -109,6 +120,28 @@ class Settings(BaseSettings):
         if not self.draft_ui_tests:
             return None
         return self.draft_ui_model or self.draft_model
+
+    @property
+    def door_model_list(self) -> tuple[str, ...]:
+        return tuple(m.strip() for m in self.door_models.split(",") if m.strip())
+
+    @property
+    def prune_key(self) -> str:
+        if not _has_value(self.prune_api_key):
+            raise MissingSettingsError("the model door", ["PRUNE_API_KEY"])
+        assert self.prune_api_key is not None
+        return self.prune_api_key.get_secret_value()
+
+    @field_validator("prune_base_url")
+    @classmethod
+    def _prune_base_url_is_safe(cls, value: str) -> str:
+        url = value.rstrip("/")
+        local = url.startswith(("http://localhost", "http://127.0.0.1", "http://prune-stub"))
+        if not url.startswith("https://") and not local:
+            raise ValueError(
+                "PRUNE_BASE_URL must be https, so the Prune key is never sent in clear"
+            )
+        return url
 
     @field_validator("llm_base_url")
     @classmethod
@@ -176,6 +209,8 @@ class Settings(BaseSettings):
             missing.append("GITHUB_TOKEN")
         if self.baseline_key is None:
             missing.append("BASELINE_KEY")  # indexing and comparing read the encrypted parts
+        if self.model_door == "prune" and not _has_value(self.prune_api_key):
+            missing.append("PRUNE_API_KEY")  # MODEL_DOOR=prune: each run's door holds it
         if missing:
             raise MissingSettingsError("worker", missing)
 

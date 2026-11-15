@@ -34,6 +34,16 @@ from uuid import UUID
 from core.errors import InfraError
 from core.logging import get_logger
 from core.settings import Settings
+from worker.door import (
+    DoorRun,
+    app_variables,
+    door_container,
+    out_network_name,
+    prepare_folder,
+    read_log,
+    remove_folder,
+    wait_ready,
+)
 from worker.media import Media, collect
 from worker.runtime import ContainerRuntime, ContainerSpec, ContainerState
 
@@ -92,6 +102,8 @@ class RunOutcome:
     app_log_path: Path
     timed_out: bool
     media: Media = field(default_factory=dict)  # the UI files kept (worker/media.py)
+    # With the model door on: its log, one line per call the app made (worker/door.py).
+    door_log: tuple[dict[str, Any], ...] | None = None
 
 
 @dataclass(frozen=True)
@@ -113,16 +125,19 @@ async def run_sandboxed(
     limits: SandboxLimits,
     app_log_path: Path,
     poll_s: float = 0.5,
+    door: DoorRun | None = None,
 ) -> RunOutcome:
     attempt = str(attempt_id)
     network = network_name(attempt_id)
     browser = any(spec.get("kind") == "ui" for spec in specs)
     deadline = time.monotonic() + limits.run_timeout_s
     started: list[str] = []
-    network_id: str | None = None
+    door_started: list[str] = []  # kept apart: the permission fallback restarts only the app
+    network_ids: list[str] = []
+    extra_env = app_variables(door) if door is not None else {}
 
     async def one_pass(strict: bool) -> _Pass:
-        app = app_container(image, attempt_id, limits, strict=strict)
+        app = app_container(image, attempt_id, limits, strict=strict, extra_env=extra_env)
         app_id = await _start(runtime, started, app)
         runner = runner_container(attempt_id, run_dir, limits, browser=browser)
         runner_id = await _start(runtime, started, runner)
@@ -139,7 +154,9 @@ async def run_sandboxed(
             "specs": specs,
         }
         await asyncio.to_thread(_prepare_run_dir, run_dir, request)
-        network_id = await runtime.create_network(network, attempt)
+        network_ids.append(await runtime.create_network(network, attempt))
+        if door is not None:
+            await _start_door(runtime, door, network, network_ids, door_started)
 
         result = await one_pass(strict=True)
         root_fallback = False
@@ -155,12 +172,16 @@ async def run_sandboxed(
         app_log = await runtime.container_logs(result.app_id, APP_LOG_LINES)
         await asyncio.to_thread(_save_text, app_log_path, app_log)
     finally:
-        await _remove_containers(runtime, started)
-        if network_id is not None:
+        await _remove_containers(runtime, [*started, *door_started])
+        for network_id in reversed(network_ids):
             try:
                 await runtime.remove_network(network_id)
             except Exception:
                 log.warning("run_cleanup_failed", what="network", id=network_id, exc_info=True)
+        door_log = None
+        if door is not None:
+            door_log = tuple(await asyncio.to_thread(read_log, door))
+            await asyncio.to_thread(remove_folder, door)
 
     flags: dict[str, Any] = {}
     collected = None
@@ -183,6 +204,7 @@ async def run_sandboxed(
         app_log_path=app_log_path,
         timed_out=result.timed_out,
         media=collected.media if collected is not None else {},
+        door_log=door_log,
     )
     log.info(
         "run_finished",
@@ -199,17 +221,23 @@ def network_name(attempt_id: UUID) -> str:
 
 
 def app_container(
-    image: str, attempt_id: UUID, limits: SandboxLimits, *, strict: bool = True
+    image: str,
+    attempt_id: UUID,
+    limits: SandboxLimits,
+    *,
+    strict: bool = True,
+    extra_env: dict[str, str] | None = None,
 ) -> ContainerSpec:
     """The team's app. `strict=False` is the permission fallback: the image's own user and a
-    writable root filesystem, every other restriction kept."""
+    writable root filesystem, every other restriction kept. `extra_env` is the model door's
+    address, token and models when the door is on."""
     network = network_name(attempt_id)
     return ContainerSpec(
         name=f"{network}-app",
         image=image,
         network=network,
         attempt=str(attempt_id),
-        environment=dict(APP_ENV),
+        environment={**(extra_env or {}), **APP_ENV},
         memory=limits.app_memory,
         cpus=limits.app_cpus,
         pids_limit=limits.app_pids_limit,
@@ -254,6 +282,31 @@ def seccomp_profile() -> str:
 
 
 # --- helpers -------------------------------------------------------------------------------------
+
+
+async def _start_door(
+    runtime: ContainerRuntime,
+    door: DoorRun,
+    internal_network: str,
+    network_ids: list[str],
+    door_started: list[str],
+) -> None:
+    """The run's out network and its door, listening before the app starts."""
+    await asyncio.to_thread(prepare_folder, door)
+    out = out_network_name(door.attempt_id)
+    network_ids.append(await runtime.create_network(out, str(door.attempt_id), internal=False))
+    try:
+        door_id = await _start(runtime, door_started, door_container(door, internal_network))
+    except InfraError:
+        raise
+    except Exception as error:
+        raise InfraError(f"the model door did not start: {error}") from error
+
+    async def running() -> bool:
+        return (await runtime.container_state(door_id)).running
+
+    await wait_ready(door, running)
+    log.info("door_ready", models=list(door.terms.models), max_calls=door.terms.max_calls)
 
 
 async def _start(runtime: ContainerRuntime, started: list[str], spec: ContainerSpec) -> str:

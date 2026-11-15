@@ -54,6 +54,7 @@ class FakeRuntime:
         self.log_tails: list[int] = []
         self.exposed: dict[str, list[int]] = {}  # {image: ports}
         self.network_names: dict[str, str] = {}
+        self.network_internal: dict[str, bool] = {}
         self.on_start: Callable[[FakeRuntime, str, ContainerSpec], None] | None = None
         self.fail_start: set[str] = set()  # images whose containers fail to start
         self._next_id = 0
@@ -68,11 +69,12 @@ class FakeRuntime:
     def started(self, *, app: bool) -> list[ContainerSpec]:
         return [s for s in self.specs.values() if (s.alias == "app") == app]
 
-    async def create_network(self, name: str, attempt: str) -> str:
+    async def create_network(self, name: str, attempt: str, *, internal: bool = True) -> str:
         self._require_daemon()
         network_id = self._new_id("net")
         self.networks[network_id] = attempt
         self.network_names[network_id] = name
+        self.network_internal[network_id] = internal
         return network_id
 
     async def start_container(self, spec: ContainerSpec) -> str:

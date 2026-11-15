@@ -35,7 +35,7 @@ test: env-check ## Unit tests on the host (starts postgres for the database test
 	$(COMPOSE) up -d --wait postgres
 	uv run pytest
 
-test-integration: env-check runner-image ## Docker-backed tests, run inside the worker image
+test-integration: env-check runner-image door-image ## Docker-backed tests, run inside the worker image
 	$(COMPOSE) up -d --wait postgres buildkit
 	$(RUN_WORKER) -e TEST_DATABASE_URL=postgresql+asyncpg://hp:hp@postgres:5432/hp_test worker pytest -m integration
 

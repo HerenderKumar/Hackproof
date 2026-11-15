@@ -35,6 +35,7 @@ from core.logging import get_logger
 from core.settings import Settings
 from core.snapshots import extract_archive
 from worker.build import BuildResult, build_image
+from worker.door import DoorRun, DoorTerms
 from worker.lanes import Handler, Outcome
 from worker.results import result_rows
 from worker.run_specs import RunPlan, final_run_plan, self_check_plan
@@ -82,6 +83,7 @@ async def build_and_run(
     limits: SandboxLimits,
     build: Build = build_image,
     run: Run = run_sandboxed,
+    door_terms: DoorTerms | None = None,
 ) -> RunReport:
     work = artifact_dir / "work" / str(attempt_id)
     logs = artifact_dir / "runs" / str(attempt_id)
@@ -100,6 +102,12 @@ async def build_and_run(
         )
         if built.status != "ok" or built.image is None:
             return RunReport(built, None)
+        door = None
+        if door_terms is not None:
+            door = DoorRun.make(
+                door_terms, attempt_id=attempt_id, team_id=team_id, mode=mode, run_dir=work / "run"
+            )
+        extra = {"door": door} if door is not None else {}
         outcome = await run(
             runtime,
             image=built.image,
@@ -109,6 +117,7 @@ async def build_and_run(
             specs=specs,
             limits=limits,
             app_log_path=logs / "app.log",
+            **extra,
         )
         return RunReport(built, outcome)
     finally:
@@ -125,6 +134,7 @@ def make_run_handler(
     run: Run = run_sandboxed,
 ) -> Handler:
     limits = SandboxLimits.from_settings(settings)
+    door_terms = DoorTerms.from_settings(settings)
 
     async def run_job(job: queue.Job) -> Outcome | None:
         found = await _load(sessions, job)
@@ -148,6 +158,7 @@ def make_run_handler(
             limits=limits,
             build=build,
             run=run,
+            door_terms=door_terms,
         )
         await _record(sessions, job, report, plan, started_at, clock.now())
         return None

@@ -54,6 +54,9 @@ class ContainerSpec:
     init: bool = False
     shm_size: str | None = None
     seccomp: str | None = None
+    # More networks the container joins before it starts, each with its alias there: the model
+    # door is on its run's out network and on the run's internal one as `model-door`.
+    extra_networks: tuple[tuple[str, str | None], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -82,8 +85,8 @@ class ContainerRuntime(Protocol):
         """Whether the container called `name` exists and is running."""
         ...
 
-    async def create_network(self, name: str, attempt: str) -> str:
-        """An internal (no outside access), labelled network. Returns its ID."""
+    async def create_network(self, name: str, attempt: str, *, internal: bool = True) -> str:
+        """A labelled network, internal (no outside access) unless asked. Returns its ID."""
         ...
 
     async def start_container(self, spec: ContainerSpec) -> str:
@@ -162,10 +165,10 @@ class DockerRuntime:
 
         return await asyncio.to_thread(inspect)
 
-    async def create_network(self, name: str, attempt: str) -> str:
+    async def create_network(self, name: str, attempt: str, *, internal: bool = True) -> str:
         def create() -> str:
             network = self._api().create_network(
-                name, driver="bridge", internal=True, labels={ATTEMPT_LABEL: attempt}
+                name, driver="bridge", internal=internal, labels={ATTEMPT_LABEL: attempt}
             )
             return str(network["Id"])
 
@@ -204,6 +207,10 @@ class DockerRuntime:
                 networking_config=api.create_networking_config({spec.network: endpoint}),
             )
             container_id = str(container["Id"])
+            for network, alias in spec.extra_networks:
+                api.connect_container_to_network(
+                    container_id, network, aliases=[alias] if alias else None
+                )
             api.start(container_id)
             return container_id
 

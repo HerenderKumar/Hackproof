@@ -159,4 +159,6 @@ def test_the_worker_registers_a_handler_for_each_built_pipeline_step(tmp_path: P
         "self_check_run",
         "audit",
         "brief",
+        "kickoff_snapshot",
+        "poll_repo",
     }

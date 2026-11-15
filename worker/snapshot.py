@@ -18,9 +18,10 @@ from core import queue
 from core.db import models
 from core.db.engine import Sessions
 from core.logging import get_logger
-from core.repo import CommitNotFound, InvalidCommit, RepoInfo, RepoNotFound, RepoProvider
+from core.repo import CommitNotFound, InvalidCommit, RepoNotFound, RepoProvider
 from core.snapshots import UnsafeArchive, check_commit_sha
 from worker.lanes import Handler, Outcome
+from worker.watch import repo_of
 
 log = get_logger()
 
@@ -45,14 +46,7 @@ def make_prepare_snapshot(
         if team is None or team.registered_at is None or not team.repo_url:
             return Outcome("validation", "the team has no registered repository")
 
-        repo = RepoInfo(
-            provider=provider.name,
-            id=team.repository_id or "",
-            url=team.repo_url,
-            default_branch=team.default_branch or "main",
-            created_at=team.repo_created_at,
-            is_public=True,
-        )
+        repo = repo_of(team, provider)
         try:
             files = await provider.snapshot(repo, sha, archives_dir)
         except (CommitNotFound, RepoNotFound, UnsafeArchive) as exc:

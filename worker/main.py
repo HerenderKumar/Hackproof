@@ -21,6 +21,7 @@ from worker.loops import every, wait_until
 from worker.run_job import RUN_KINDS, make_run_handler
 from worker.runtime import ContainerRuntime, DockerRuntime
 from worker.snapshot import make_prepare_snapshot
+from worker.watch import make_kickoff_handler, make_poll_handler
 
 SCHEMA_POLL_S = 2.0
 
@@ -40,6 +41,8 @@ def build_handlers(
         **dict.fromkeys(RUN_KINDS, run),
         "audit": make_audit_handler(sessions, llm, settings),
         "brief": make_brief_handler(sessions, llm, settings),
+        "kickoff_snapshot": make_kickoff_handler(sessions, provider, clock),
+        "poll_repo": make_poll_handler(sessions, provider, clock),
     }
 
 

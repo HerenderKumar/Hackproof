@@ -1,7 +1,8 @@
 """Request and response bodies of the team's M7 routes: claims, tests, snapshots, submissions."""
 
+import uuid
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -44,3 +45,46 @@ class ClaimsView(BaseModel):
     lock_at: datetime
     locked: bool
     versions_left: int
+
+
+# --- tests -----------------------------------------------------------------------------------
+
+ClaimState = Literal[
+    "drafting", "draft", "approved", "needs_clarification", "ui_pending", "drafting_failed"
+]
+Drafting = Literal["none", "queued", "running", "done", "failed"]
+
+
+class TestOut(BaseModel):
+    """A drafted test as its team reads it: the steps and the practice cases, never the hidden
+    final cases."""
+
+    __test__ = False  # not a pytest class
+
+    id: uuid.UUID
+    claim_type: str
+    version: int
+    spec_hash: str
+    steps: list[dict[str, Any]]
+    practice_cases: list[dict[str, Any]]
+    reason: str | None
+    approved_at: datetime | None
+
+
+class ClaimTest(BaseModel):
+    claim_id: str
+    text: str
+    state: ClaimState
+    test: TestOut | None
+
+
+class TestsView(BaseModel):
+    __test__ = False
+
+    claims_version: int | None
+    drafting: Drafting
+    claims: list[ClaimTest]
+
+
+class ApproveIn(Strict):
+    spec_hash: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]

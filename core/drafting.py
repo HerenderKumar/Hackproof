@@ -88,14 +88,14 @@ def system_prompt() -> str:
 def render_start(start: StartText) -> str:
     """The user message: the team's text, each part inside a tag it cannot close."""
     parts = [
-        f"<problem_statement>\n{_escape(start.problem_statement)}\n</problem_statement>",
-        f"<explanation>\n{_escape(start.explanation)}\n</explanation>",
+        f"<problem_statement>\n{escape_tags(start.problem_statement)}\n</problem_statement>",
+        f"<explanation>\n{escape_tags(start.explanation)}\n</explanation>",
     ]
     for claim in start.claims:
         fields = "\n".join(
-            f"<{name}>{_escape(claim.get(name, ''))}</{name}>" for name in _CLAIM_FIELDS
+            f"<{name}>{escape_tags(claim.get(name, ''))}</{name}>" for name in _CLAIM_FIELDS
         )
-        claim_id = _escape(claim["id"]).replace('"', "&quot;")
+        claim_id = escape_tags(claim["id"]).replace('"', "&quot;")
         parts.append(f'<claim id="{claim_id}">\n{fields}\n</claim>')
     return "\n\n".join(parts)
 
@@ -132,7 +132,7 @@ async def draft_tests(
         first = await ask(user)
     except LLMOutputError as exc:
         feedback = (
-            f"Your earlier answer could not be used: {_escape(str(exc))}\n"
+            f"Your earlier answer could not be used: {escape_tags(str(exc))}\n"
             "Call submit_tests again with an entry for every claim."
         )
         retry = wanted
@@ -228,8 +228,8 @@ def _fault_feedback(faults: dict[str, _Fault]) -> str:
         "these claims only, and fix every problem."
     ]
     for claim_id, fault in faults.items():
-        lines = [f'<claim_feedback id="{_escape(claim_id)}">', "Problems:"]
-        lines += [f"- {_escape(problem)}" for problem in fault.problems]
+        lines = [f'<claim_feedback id="{escape_tags(claim_id)}">', "Problems:"]
+        lines += [f"- {escape_tags(problem)}" for problem in fault.problems]
         if fault.previous is not None:
             lines += ["Your earlier answer:", _json_text(fault.previous)]
         lines.append("</claim_feedback>")
@@ -243,5 +243,6 @@ def _json_text(test: DraftedTest) -> str:
     return text.replace("<", "\\u003c").replace(">", "\\u003e")
 
 
-def _escape(text: str) -> str:
+def escape_tags(text: str) -> str:
+    """Text that cannot open or close a tag of ours: `<` and `>` as entities."""
     return text.replace("<", "&lt;").replace(">", "&gt;")

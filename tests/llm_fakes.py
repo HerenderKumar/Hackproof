@@ -88,3 +88,20 @@ def text_reply(text: str, finish: str = "stop") -> dict[str, Any]:
         ],
         "usage": {"prompt_tokens": 1000, "completion_tokens": 20, "cost": 0.2},
     }
+
+
+def audit_reply(
+    claims: list[dict[str, Any]], hints: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """A reply calling `submit_audit` with these claim entries and text hints."""
+    return calls_reply(("submit_audit", {"claims": claims, "text_hints": hints or []}))
+
+
+def claim_entry(
+    claim_id: str = "c1",
+    implementation: str = "implemented",
+    citations: list[dict[str, Any]] | None = None,
+    explanation: str = "The handler computes the shares.",
+) -> dict[str, Any]:
+    return {"claim_id": claim_id, "implementation": implementation, "explanation": explanation,
+            "citations": citations or []}  # fmt: skip

@@ -22,6 +22,7 @@ from core.codemap import (
     route_strings,
     run_graphify,
     search_routes,
+    ui_strings,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -355,3 +356,37 @@ async def test_graphify_that_hangs_is_stopped(src: Path, tmp_path: Path) -> None
     with pytest.raises(GraphError, match="longer than"):
         await run_graphify(src, timeout_s=0.5)
     assert time.monotonic() - started < 5
+
+
+# --- UI claims (M11) -----------------------------------------------------------------------------
+
+
+def test_a_ui_tests_literal_names_are_its_strings() -> None:
+    steps = [
+        {"action": "goto", "path": "/"},
+        {"action": "goto", "path": "/settings"},
+        {"action": "fill", "locator": {"label": "New item"}, "value": "{{case.input.item}}"},
+        {"action": "click", "locator": {"role": "button", "name": "Add"}},
+        {"action": "click", "locator": {"role": "button", "name": "OK"}},  # too short to place
+        {"action": "expect_text", "locator": {"text": "{{case.input.item}}"}, "text": "x"},
+        {"action": "expect_visible", "locator": {"test_id": "items-list"}},
+        {"action": "expect_text", "locator": {"label": "New item"}, "text": "y"},
+    ]
+
+    assert ui_strings({"steps": steps}) == ["/settings", "New item", "Add", "items-list"]
+    assert ui_strings(None) == []
+
+
+def test_f05s_ui_claim_is_placed_where_the_page_names_its_controls() -> None:
+    tools = ArchiveTools(ROOT / "fixtures" / "F05-static-packing-list" / "good")
+    claims = [{"id": "c1", "target": "UI: the home page, the New item field and the Add button"}]
+    specs = {"c1": json.loads((ROOT / "fixtures" / "F05-static-packing-list" / "specs.json")
+                              .read_text())[0]}  # fmt: skip
+
+    without, failed = code_map(None, "no graph", tools, claims, {"claims": []})
+    mapped, status = code_map(None, "no graph", tools, claims, {"claims": []}, specs)
+
+    assert (failed, without["claims"]["c1"]["method"]) == ("failed", "none")
+    assert (status, mapped["claims"]["c1"]["method"]) == ("fallback", "search")
+    assert mapped["claims"]["c1"]["routes"] == ["New item", "Add", "Items"]
+    assert {hit["path"] for hit in mapped["claims"]["c1"]["hits"]} == {"index.html"}

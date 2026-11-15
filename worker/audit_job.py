@@ -16,7 +16,7 @@ with `error_class = 'budget'` and a row with `partial = true` (section 11.3).
 
 import asyncio
 import shutil
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -49,6 +49,7 @@ class _Found:
     submission_id: UUID
     snapshot: models.Snapshot
     given: AuditInput
+    ui_specs: dict[str, dict[str, Any]]  # each UI claim's newest test, for the code map only
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,7 @@ async def audit_folder(
     budget: AuditBudget,
     graphify: Graphify = run_graphify,
     job_id: UUID | None = None,
+    ui_specs: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> Audited:
     """Audit an extracted snapshot, keep the citations that hold, then map the code.
 
@@ -96,7 +98,7 @@ async def audit_folder(
     )
     graph, graph_error = await _graph(graphify, src)
     mapped, status = await asyncio.to_thread(
-        code_map, graph, graph_error, tools, given.claims, validated.content
+        code_map, graph, graph_error, tools, given.claims, validated.content, ui_specs
     )
     return Audited(ran, validated, mapped, status)
 
@@ -134,6 +136,7 @@ def make_audit_handler(
                 budget=budget,
                 graphify=graphify,
                 job_id=job.id,
+                ui_specs=found.ui_specs,
             )
         finally:
             await asyncio.to_thread(shutil.rmtree, work, ignore_errors=True)
@@ -192,6 +195,18 @@ async def _load(sessions: Sessions, job: queue.Job) -> _Found | Outcome:
                 models.Claims.version == submission.claims_version,
             )
         )
+        ui_rows = await session.scalars(
+            select(models.TestSpec)
+            .where(
+                models.TestSpec.team_id == submission.team_id,
+                models.TestSpec.claims_version == submission.claims_version,
+                models.TestSpec.kind == "ui",
+            )
+            .order_by(models.TestSpec.version)
+        )
+        # The newest UI test of each claim: its names anchor the claim in the code map. The
+        # model never sees a test (D-047 point 7); this only places the claim in the code.
+        ui_specs = {row.claim_id: {"steps": row.steps} for row in ui_rows if row.claim_id}
     if snapshot is None or team is None or event is None:
         return Outcome("validation", "audit needs the submission's snapshot, team and event")
     if claims is None:
@@ -203,7 +218,7 @@ async def _load(sessions: Sessions, job: queue.Job) -> _Found | Outcome:
         problem_statement=claims.problem_statement,
         claims=[claim_fields(item) for item in claims.items],
     )
-    return _Found(submission.id, snapshot, given)
+    return _Found(submission.id, snapshot, given, ui_specs)
 
 
 async def _graph(graphify: Graphify, src: Path) -> tuple[Graph | None, str | None]:

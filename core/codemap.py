@@ -20,6 +20,11 @@ from the claim's target. Neighbours: one hop along `calls` (both ways) from an a
 explicit first. When nothing anchors a claim, a plain-text search for its route strings in the
 code files is the fallback (`code_map_status = 'fallback'`); with neither, `failed`. The judge's
 brief renders in all three cases.
+
+A UI claim names no route (M11 design, part 10). Its strings are the literal names its test
+looks for (a label, a button's name, a placeholder, a test ID) and the page paths it opens other
+than `/`; they are searched like route strings, so the lines where the page names its controls
+anchor the claim.
 """
 
 import asyncio
@@ -30,13 +35,14 @@ import re
 import shutil
 import signal
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from core.archive_tools import MAX_FILE_BYTES, ArchiveTools, is_binary, normalise
 from core.snapshots import counts_toward_lines
+from core.templating import PLACEHOLDER
 
 GRAPHIFY_TIMEOUT_S = 120.0
 MAX_NEIGHBOURS = 8
@@ -351,6 +357,31 @@ def search_routes(tools: ArchiveTools, routes: Sequence[str]) -> list[dict[str, 
 # --- the map -------------------------------------------------------------------------------------
 
 
+_UI_NAMES = ("name", "label", "placeholder", "text", "test_id")
+_MIN_UI_STRING = 3
+
+
+def ui_strings(spec: Mapping[str, Any] | None) -> list[str]:
+    """The literal strings a UI test looks for on the page, each once, placeholders left out."""
+    found: list[str] = []
+    for step in (spec or {}).get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        locator = step.get("locator") or {}
+        values = [locator.get(name) for name in _UI_NAMES if isinstance(locator, dict)]
+        if step.get("action") in ("goto", "expect_url") and step.get("path") != "/":
+            values.append(step.get("path"))
+        for value in values:
+            if (
+                isinstance(value, str)
+                and len(value.strip()) >= _MIN_UI_STRING
+                and not PLACEHOLDER.search(value)
+                and value not in found
+            ):
+                found.append(value)
+    return found
+
+
 def claim_map(
     graph: Graph | None,
     tools: ArchiveTools,
@@ -358,9 +389,12 @@ def claim_map(
     citations: Sequence[dict[str, Any]],
     *,
     ranges: dict[str, tuple[str, int, int]] | None = None,
+    extra: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """One claim's anchors and neighbours, or its route-search hits. `ranges` may be shared."""
+    """One claim's anchors and neighbours, or its route-search hits. `ranges` may be shared.
+    `extra` adds strings to search for beside the target's routes: a UI test's names."""
     routes = route_strings(target)
+    routes += [text for text in extra if text not in routes]
     if graph is not None:
         spans = ranges if ranges is not None else function_ranges(graph, tools)
         anchors = _anchors(graph, spans, _Sources(tools), routes, citations)
@@ -391,15 +425,22 @@ def code_map(
     tools: ArchiveTools,
     claims: Sequence[dict[str, str]],
     audit_content: dict[str, Any],
+    ui_specs: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], Status]:
-    """The code map of every claim, and `code_map_status`."""
+    """The code map of every claim, and `code_map_status`. `ui_specs` holds the UI test of
+    each UI claim, by claim ID."""
     cited = {
         entry["claim_id"]: entry.get("citations", []) for entry in audit_content.get("claims", [])
     }
     ranges = function_ranges(graph, tools) if graph is not None else None
     per_claim = {
         claim["id"]: claim_map(
-            graph, tools, claim.get("target", ""), cited.get(claim["id"], []), ranges=ranges
+            graph,
+            tools,
+            claim.get("target", ""),
+            cited.get(claim["id"], []),
+            ranges=ranges,
+            extra=ui_strings((ui_specs or {}).get(claim["id"])),
         )
         for claim in claims
     }

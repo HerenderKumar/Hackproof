@@ -105,6 +105,7 @@ async def audit_variant(
         model=settings.audit_model,
         budget=replace(budget_of(settings), timeout_s=math.inf),
         graphify=graphify,
+        ui_specs={spec["claim_id"]: spec for spec in fixture.specs if spec.get("kind") == "ui"},
     )
     content = done.validated.content
     answered = {claim["claim_id"]: claim for claim in content["claims"]}

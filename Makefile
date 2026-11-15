@@ -7,9 +7,10 @@ RUN_WORKER := $(COMPOSE) run --rm -T -v "$(CURDIR)":/app -w /app
 # working tree's, so the suites that record (drafts, audits) read and write it at another path.
 RECORDINGS := -v "$(CURDIR)/fixtures/llm":/recordings -e LLM_REPLAY_DIR=/recordings
 RUNNER_IMAGE ?= hackproof-runner:1
+DOOR_IMAGE ?= hackproof-door:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits baselines baselines-model smoke fixture-remotes seed-demo runner-image runner-test prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits baselines baselines-model smoke fixture-remotes seed-demo runner-image door-image runner-test prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -106,6 +107,9 @@ seed-demo: env-check runner-image ## Create the demo event and pre-run every job
 	$(RUN_WORKER) $(RECORDINGS) $(REMOTES) -e LLM_MODE=$(SEED_MODE) worker \
 	  python -m scripts.seed_demo --mode $(SEED_MODE) $(SEED_ARGS); status=$$?; \
 	[ -z "$$was" ] || $(COMPOSE) start worker; exit $$status
+
+door-image: ## Build the model door image (Prune design): one door per run when MODEL_DOOR=prune
+	docker build -f door/Dockerfile -t $(DOOR_IMAGE) .
 
 runner-image: ## Build the test runner image
 	docker build -f runner/Dockerfile --target runner -t $(RUNNER_IMAGE) .

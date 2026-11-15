@@ -1,0 +1,178 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { type FormEvent, useState } from "react";
+import { Link } from "react-router-dom";
+import { send } from "@/api";
+import { Button, ErrorNotice, Field, Notice, Section } from "@/components/ui";
+import { keys, useTeam } from "@/queries";
+import { isPast, remaining, useNow, when } from "@/time";
+import type { RepoIn, TeamView } from "@/types";
+
+function nextStep(team: TeamView, now: Date): { text: string; to?: string } {
+  const { progress } = team;
+  if (isPast(team.event.deadline_at, now)) {
+    return progress.has_submitted
+      ? { text: "The event is over. Your receipt shows what you submitted.", to: "/team/receipt" }
+      : { text: "The event is over." };
+  }
+  if (!team.rules_acknowledged_at) return { text: "Read the event rules below and acknowledge them." };
+  if (!team.repo) return { text: "Register your team's public repository below." };
+  if (!progress.has_claims) {
+    return { text: "Write your problem statement and up to three claims.", to: "/team/claims" };
+  }
+  if (progress.tests_total === 0) {
+    return { text: "Your tests are being drafted from your claims. Check the tests page.", to: "/team/tests" };
+  }
+  if (progress.tests_approved < progress.tests_total) {
+    const left = progress.tests_total - progress.tests_approved;
+    return { text: `Read and approve your drafted tests (${left} left).`, to: "/team/tests" };
+  }
+  if (!progress.has_snapshot) {
+    return { text: "Snapshot a commit and run a self-check against your tests.", to: "/team/tests" };
+  }
+  if (!progress.has_submitted) return { text: "Submit a snapshot before the deadline.", to: "/team/submit" };
+  return {
+    text: "Submitted. You can submit again before the deadline; the latest one is judged.",
+    to: "/team/receipt",
+  };
+}
+
+function Times({ team, now }: { team: TeamView; now: Date }) {
+  const rows = [
+    { label: "Kickoff", at: team.event.kickoff_at },
+    { label: "Claims lock", at: team.event.claims_lock_at },
+    { label: "Deadline", at: team.event.deadline_at },
+  ];
+  return (
+    <dl className="grid gap-3 sm:grid-cols-3">
+      {rows.map((row) => {
+        const left = remaining(row.at, now);
+        return (
+          <div key={row.label} className="rounded-md border border-neutral-200 px-3 py-2">
+            <dt className="text-xs uppercase tracking-wide text-neutral-500">{row.label}</dt>
+            <dd className="mt-1 text-sm font-medium">{when(row.at)}</dd>
+            <dd className="text-xs tabular-nums text-neutral-600">{left === "passed" ? "passed" : `in ${left}`}</dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
+function Rules({ team }: { team: TeamView }) {
+  const queryClient = useQueryClient();
+  const acknowledge = useMutation({
+    mutationFn: () => send<TeamView>("POST", "/team/rules-ack"),
+    onSuccess: (view) => queryClient.setQueryData(keys.team, view),
+  });
+  return (
+    <Section title="Event rules">
+      {team.event.policy_text ? (
+        <p className="whitespace-pre-wrap text-sm text-neutral-800">{team.event.policy_text}</p>
+      ) : (
+        <p className="text-sm text-neutral-500">The organiser has not written any rules.</p>
+      )}
+      {team.rules_acknowledged_at ? (
+        <p className="text-sm text-emerald-800">Acknowledged {when(team.rules_acknowledged_at)}.</p>
+      ) : (
+        <div className="space-y-2">
+          <Button onClick={() => acknowledge.mutate()} busy={acknowledge.isPending}>
+            I have read the rules
+          </Button>
+          <ErrorNotice error={acknowledge.error} />
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function Repository({ team }: { team: TeamView }) {
+  const queryClient = useQueryClient();
+  const [url, setUrl] = useState(team.suggested_repo_url ?? "");
+  const [healthPath, setHealthPath] = useState(team.health_path);
+  const register = useMutation({
+    mutationFn: (body: RepoIn) => send<TeamView>("POST", "/team/repo", body),
+    onSuccess: (view) => queryClient.setQueryData(keys.team, view),
+  });
+
+  if (team.repo) {
+    return (
+      <Section title="Repository">
+        <p className="text-sm">
+          <a href={team.repo.url} className="font-medium text-indigo-700 underline" target="_blank" rel="noreferrer">
+            {team.repo.url}
+          </a>
+          <span className="text-neutral-500"> · branch {team.repo.default_branch}</span>
+        </p>
+        <p className="text-sm text-neutral-600">
+          Registered {when(team.repo.registered_at)}
+          {team.repo.late && " (after kickoff: judges see this as context)"}. Health check path{" "}
+          <code className="font-mono">{team.health_path}</code>.
+        </p>
+      </Section>
+    );
+  }
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    const body: RepoIn = { repo_url: url.trim() };
+    if (healthPath.trim() && healthPath.trim() !== team.health_path) body.health_path = healthPath.trim();
+    register.mutate(body);
+  }
+
+  const blocked = !team.rules_acknowledged_at;
+  return (
+    <Section title="Repository">
+      {blocked && <Notice tone="info">Acknowledge the rules first.</Notice>}
+      <form onSubmit={submit} className="space-y-3">
+        <Field
+          label="Public repository URL"
+          value={url}
+          onChange={setUrl}
+          placeholder="https://github.com/your-team/your-project"
+          disabled={blocked}
+          required
+        />
+        <Field
+          label="Health check path"
+          hint="The path HackProof requests to see that your app has started."
+          value={healthPath}
+          onChange={setHealthPath}
+          disabled={blocked}
+        />
+        <ErrorNotice error={register.error} />
+        <Button type="submit" busy={register.isPending} disabled={blocked || !url.trim()}>
+          Register repository
+        </Button>
+      </form>
+    </Section>
+  );
+}
+
+export function TeamHome() {
+  const team = useTeam();
+  const now = useNow(team.data?.now);
+  if (!team.data) return null; // the Layout shows loading and errors
+  const step = nextStep(team.data, now);
+  return (
+    <>
+      <Notice tone="info" title="Next step">
+        {step.to ? (
+          <Link to={step.to} className="underline">
+            {step.text}
+          </Link>
+        ) : (
+          step.text
+        )}
+      </Notice>
+      <Section title="The event">
+        <Times team={team.data} now={now} />
+        <p className="text-sm text-neutral-600">
+          Claims and their tests can change until the claims lock. Self-checks and submissions go on until the
+          deadline.
+        </p>
+      </Section>
+      <Rules team={team.data} />
+      <Repository team={team.data} />
+    </>
+  );
+}

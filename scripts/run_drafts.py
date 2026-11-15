@@ -15,7 +15,8 @@ Each fixture's start text (`start.json` with `claims.json`) goes through the dra
 
 The model's replies are replayed from `LLM_REPLAY_DIR` unless `LLM_MODE` says otherwise, so the
 checks cost nothing and never touch the network. `make drafts DRAFTS_MODE=record` calls the
-model, saves its replies, and after a full run removes the recordings no request used.
+model, saves its replies, and after a full run removes the drafting recordings no request used
+(the audits' recordings in the same folder are left alone).
 
 `--only F01,D01` drafts a subset. `--run` then builds each selected fixture's variants and runs
 the drafted tests against them in final mode, comparing the verdicts with `expected.json` as
@@ -24,13 +25,14 @@ the drafted tests against them in final mode, comparing the verdicts with `expec
 
 import argparse
 import asyncio
+import json
 import sys
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
-from core.drafting import Drafted, StartText, draft_tests
+from core.drafting import SUBMIT_TESTS, Drafted, StartText, draft_tests
 from core.llm import LLMClient, Transport, make_transport, request_key
 from core.logging import configure_logging
 from core.settings import Settings, get_settings
@@ -193,9 +195,22 @@ def remembering(transport: Transport, keys: set[str]) -> Transport:
     return send
 
 
-def prune_recordings(directory: Path, used: set[str]) -> int:
-    """Remove the recordings no request used, so a changed prompt leaves no stale replies."""
-    stale = [path for path in directory.glob("*.json") if path.stem not in used]
+def offers(path: Path, tool: str) -> bool:
+    """Whether the recorded request offered `tool`: which suite a recording belongs to."""
+    try:
+        request = json.loads(path.read_text(encoding="utf-8")).get("request", {})
+        return any(t.get("function", {}).get("name") == tool for t in request.get("tools", []))
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def prune_recordings(directory: Path, used: set[str], tool: str) -> int:
+    """Remove this suite's recordings no request used, so a changed prompt leaves no stale
+    replies. A suite's requests are those offering its final tool (`submit_tests` for drafts,
+    `submit_audit` for audits): the two suites share the folder and never prune each other."""
+    stale = [
+        path for path in directory.glob("*.json") if path.stem not in used and offers(path, tool)
+    ]
     for path in stale:
         path.unlink()
     return len(stale)
@@ -225,7 +240,7 @@ async def _run(
     client = LLMClient(remembering(make_transport(settings), used))
     ok, drafted = await draft_suite(client, settings, fixtures, cases)
     if prune:
-        removed = prune_recordings(settings.llm_replay_dir, used)
+        removed = prune_recordings(settings.llm_replay_dir, used, SUBMIT_TESTS.name)
         print(f"{len(used)} requests recorded, {removed} stale recordings removed")
     if not run_apps:
         return 0 if ok else 1

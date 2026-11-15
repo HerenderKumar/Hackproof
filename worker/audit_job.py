@@ -19,6 +19,7 @@ import shutil
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -26,10 +27,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import queue
 from core.archive_tools import ArchiveTools
-from core.audit import AuditBudget, AuditInput, run_audit
-from core.citations import validate_audit
+from core.audit import AuditBudget, AuditInput, AuditRun, run_audit
+from core.citations import ValidatedAudit, validate_audit
 from core.claims import claim_fields
-from core.codemap import Graph, GraphError, code_map, run_graphify
+from core.codemap import Graph, GraphError, Status, code_map, run_graphify
 from core.db import models
 from core.db.engine import Sessions
 from core.llm import LLMClient
@@ -50,6 +51,56 @@ class _Found:
     given: AuditInput
 
 
+@dataclass(frozen=True)
+class Audited:
+    ran: AuditRun
+    validated: ValidatedAudit
+    code_map: dict[str, Any]
+    code_map_status: Status
+
+
+def budget_of(settings: Settings) -> AuditBudget:
+    return AuditBudget(
+        max_steps=settings.audit_max_steps,
+        max_tokens=settings.audit_max_tokens,
+        timeout_s=float(settings.audit_timeout_s),
+    )
+
+
+async def audit_folder(
+    client: LLMClient,
+    src: Path,
+    given: AuditInput,
+    *,
+    model: str,
+    budget: AuditBudget,
+    graphify: Graphify = run_graphify,
+    job_id: UUID | None = None,
+) -> Audited:
+    """Audit an extracted snapshot, keep the citations that hold, then map the code.
+
+    The job and `make audits` both go through here. Graphify runs last: it writes into `src`.
+    """
+    tools = ArchiveTools(src)
+    ran = await run_audit(client, tools, given, model=model, budget=budget, job_id=job_id)
+    validated = await asyncio.to_thread(
+        validate_audit,
+        ran.output,
+        tools,
+        [claim["id"] for claim in given.claims],
+        partial=ran.partial,
+        failure=ran.failure,
+        steps=ran.steps,
+        tokens=ran.tokens,
+        model=model,
+    )
+    graph, graph_error = await _graph(graphify, src)
+    mapped, status = await asyncio.to_thread(
+        code_map, graph, graph_error, tools, given.claims, validated.content
+    )
+    return Audited(ran, validated, mapped, status)
+
+
 def make_audit_handler(
     sessions: Sessions,
     client: LLMClient,
@@ -57,12 +108,7 @@ def make_audit_handler(
     *,
     graphify: Graphify = run_graphify,
 ) -> Handler:
-    budget = AuditBudget(
-        max_steps=settings.audit_max_steps,
-        max_tokens=settings.audit_max_tokens,
-        timeout_s=float(settings.audit_timeout_s),
-    )
-    model = settings.audit_model
+    budget = budget_of(settings)
 
     async def audit(job: queue.Job) -> Outcome | None:
         found = await _load(sessions, job)
@@ -75,34 +121,24 @@ def make_audit_handler(
 
         work = settings.artifact_dir / "work" / str(job.attempt_id)
         src = work / "src"
-        claim_ids = [claim["id"] for claim in found.given.claims]
         try:
             snapshot = found.snapshot
             await asyncio.to_thread(
                 extract_archive, Path(snapshot.archive_path), snapshot.archive_sha256, src
             )
-            tools = ArchiveTools(src)
-            ran = await run_audit(
-                client, tools, found.given, model=model, budget=budget, job_id=job.id
-            )
-            validated = await asyncio.to_thread(
-                validate_audit,
-                ran.output,
-                tools,
-                claim_ids,
-                partial=ran.partial,
-                failure=ran.failure,
-                steps=ran.steps,
-                tokens=ran.tokens,
-                model=model,
-            )
-            graph, graph_error = await _graph(graphify, src)
-            mapped, status = await asyncio.to_thread(
-                code_map, graph, graph_error, tools, found.given.claims, validated.content
+            done = await audit_folder(
+                client,
+                src,
+                found.given,
+                model=settings.audit_model,
+                budget=budget,
+                graphify=graphify,
+                job_id=job.id,
             )
         finally:
             await asyncio.to_thread(shutil.rmtree, work, ignore_errors=True)
 
+        ran, validated = done.ran, done.validated
         row = models.Audit(
             submission_id=found.submission_id,
             job_id=job.id,
@@ -110,8 +146,8 @@ def make_audit_handler(
             content=validated.content,
             citations_dropped=validated.citations_dropped,
             partial=ran.partial,
-            code_map=mapped,
-            code_map_status=status,
+            code_map=done.code_map,
+            code_map_status=done.code_map_status,
         )
         if not await _store(sessions, job, row):
             log.info("audit_skipped", reason="this attempt already stored its audit")
@@ -128,7 +164,7 @@ def make_audit_handler(
             citations=sum(len(c["citations"]) for c in content["claims"]),
             citations_dropped=validated.citations_dropped,
             hints=len(content["text_hints"]),
-            code_map_status=status,
+            code_map_status=done.code_map_status,
         )
         if ran.partial:
             detail = ran.failure or f"the audit used up its budget after {ran.steps} steps"

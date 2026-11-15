@@ -233,7 +233,8 @@ async def test_the_model_reads_the_submitted_claims_version_and_the_event(
     assert s.event_name in first and s.team_name in first
     assert "Bills are fiddly to split." in first
     assert '<claim id="c1">' in first and '<claim id="c2">' in first
-    assert "c3" not in first and "Latin" not in first  # version 2 came after the submission
+    # Version 2 came after the submission. (Not a bare "c3": the random names may hold it.)
+    assert '<claim id="c3">' not in first and "Latin" not in first
     assert "server.js" in first  # the top folder's listing
     assert "graphify-out" not in first  # Graphify runs after the audit
 

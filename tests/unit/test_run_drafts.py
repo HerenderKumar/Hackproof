@@ -1,6 +1,7 @@
 """`make drafts` (M6): the checks on drafted tests, and the suite's output."""
 
 import copy
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -234,19 +235,34 @@ def test_only_the_named_fixtures_and_cases_are_drafted() -> None:
         select(fixtures, cases, ["F01", "F77"])
 
 
+def recording(tool: str) -> str:
+    request = {"tools": [{"type": "function", "function": {"name": tool}}], "messages": []}
+    return json.dumps({"request": request, "response": {}})
+
+
 async def test_recordings_no_request_used_are_removed(tmp_path: Path) -> None:
     used: set[str] = set()
     transport = remembering(Scripted({"reply": 1}), used)
     body = {"model": "m", "messages": []}
     for name in (request_key(body), "0" * 64):
-        (tmp_path / f"{name}.json").write_text("{}")
+        (tmp_path / f"{name}.json").write_text(recording("submit_tests"))
     (tmp_path / "README.md").write_text("recordings")
 
     assert await transport(body) == {"reply": 1}
 
     assert used == {request_key(body)}
-    assert prune_recordings(tmp_path, used) == 1
+    assert prune_recordings(tmp_path, used, "submit_tests") == 1
     assert sorted(p.name for p in tmp_path.iterdir()) == ["README.md", f"{request_key(body)}.json"]
+
+
+def test_pruning_leaves_the_other_suites_recordings(tmp_path: Path) -> None:
+    (tmp_path / f"{'a' * 64}.json").write_text(recording("submit_tests"))
+    (tmp_path / f"{'b' * 64}.json").write_text(recording("submit_audit"))
+    (tmp_path / f"{'c' * 64}.json").write_text("not json")
+
+    assert prune_recordings(tmp_path, set(), "submit_tests") == 1
+
+    assert sorted(p.stem[0] for p in tmp_path.glob("*.json")) == ["b", "c"]
 
 
 # --- the recordings ------------------------------------------------------------------------------

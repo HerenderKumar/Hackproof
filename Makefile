@@ -6,7 +6,7 @@ RUN_WORKER := $(COMPOSE) run --rm -T -v "$(CURDIR)":/app -w /app
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures drafts fixture-remotes seed-demo runner-image prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits fixture-remotes seed-demo runner-image prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -58,6 +58,14 @@ DRAFTS_RUN := $(findstring --run,$(DRAFTS_ARGS))
 drafts: env-check $(if $(DRAFTS_RUN),runner-image) ## Draft the fixtures' tests from their start texts and check them
 	$(if $(DRAFTS_RUN),$(COMPOSE) up -d --wait postgres buildkit)
 	$(RUN_WORKER) -e LLM_MODE=$(DRAFTS_MODE) worker python -m scripts.run_drafts $(DRAFTS_ARGS)
+
+# Audits every fixture variant from its own files, with Graphify's code map, and compares each
+# claim's implementation with expected.json (M8). By default the model's recorded replies in
+# fixtures/llm are replayed: no network, no cost. AUDITS_MODE=record calls the model and saves
+# its replies. AUDITS_ARGS="--only F01,F09" audits a subset.
+AUDITS_MODE ?= replay
+audits: env-check ## Audit every fixture variant and compare with expected.json
+	$(RUN_WORKER) -e LLM_MODE=$(AUDITS_MODE) worker python -m scripts.run_audits $(AUDITS_ARGS)
 
 fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)
 	uv run python -m scripts.make_history_fixtures

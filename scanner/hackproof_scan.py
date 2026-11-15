@@ -666,6 +666,7 @@ def main(
         help="where the file list and the receipt are written (default: beside this file)",
     )  # fmt: skip
     args = parser.parse_args(argv)
+    os.makedirs(args.out, exist_ok=True)  # the receipt's folder may not exist yet
 
     def say(line: str = "") -> None:
         print(line, file=out)

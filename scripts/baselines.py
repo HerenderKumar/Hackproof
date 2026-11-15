@@ -26,7 +26,7 @@ EXPECTED_FIELDS = {
     "percent", "late_percent", "identical_files", "matches", "excluded_starter",
     "excluded_common", "scan",
 }  # fmt: skip
-MATCH_KINDS = {"identical_file", "unchanged", "edited"}
+MATCH_KINDS = {"identical_file", "unchanged", "edited", "possibly_related"}
 
 
 @dataclass(frozen=True)

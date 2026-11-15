@@ -71,7 +71,7 @@ AUDITS_MODE ?= replay
 audits: env-check ## Audit every fixture variant and compare with expected.json
 	$(RUN_WORKER) $(RECORDINGS) -e LLM_MODE=$(AUDITS_MODE) worker python -m scripts.run_audits $(AUDITS_ARGS)
 
-baselines: ## Scan, index and compare the kickoff-baseline fixtures B1 to B5 (no network, no database)
+baselines: ## Scan, index and compare the kickoff-baseline fixtures B1 to B6 (no network, no database)
 	uv run python -m scripts.run_baselines $(BASELINE_ARGS)
 
 fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)

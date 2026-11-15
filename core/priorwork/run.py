@@ -8,7 +8,7 @@ team's own baselines can match.
 
 import hashlib
 import uuid
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -18,6 +18,7 @@ from core.priorwork.compare import compare, eligible
 from core.priorwork.fingerprint import pack_runs, run_hashes, unpack_runs
 from core.priorwork.lexer import tokenize
 from core.priorwork.model import MatchSettings, Report, SourceFile
+from core.priorwork.related import Embedder, with_related
 from core.snapshots import read_archive
 
 
@@ -42,6 +43,10 @@ class CompareRequest:
     starter_runs: tuple[bytes, ...]  # each starter's packed runs
     min_teams: int
     settings: MatchSettings
+    # Stage 5: a top-level function, because the request is pickled into the pool's process
+    # and a loaded model cannot be. None leaves the "possibly related" list out.
+    embedder_factory: Callable[[], Embedder] | None = None
+    related_min_score: float = 0.80
 
 
 def final_files(request: CompareRequest) -> list[SourceFile]:
@@ -70,15 +75,20 @@ def run_comparison(request: CompareRequest) -> Report:
     starter: set[int] = set()
     for packed in request.starter_runs:
         starter |= unpack_runs(packed)
+    files = final_files(request)
     try:
-        return compare(
-            final_files(request),
+        report = compare(
+            files,
             own,
             starter_runs=starter,
             common_teams=common_teams,
             min_teams=request.min_teams,
             settings=request.settings,
         )
+        if request.embedder_factory is None:
+            return report
+        embedder = request.embedder_factory()
+        return with_related(report, files, own, embedder, request.related_min_score)
     finally:
         for baseline in own:
             baseline.close()

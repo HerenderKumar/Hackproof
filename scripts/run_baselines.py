@@ -1,4 +1,4 @@
-"""`make baselines`: scan, store, index and compare each fixture B1 to B5 (M9, Task 11).
+"""`make baselines`: scan, store, index and compare each fixture B1 to B6 (M9, Tasks 11, 21).
 
 For each fixture, each device folder is copied into a scratch folder, `make` adds what git
 cannot hold, and the copy is scanned with the scanner's own functions. The parts are stored
@@ -16,6 +16,7 @@ import sys
 import tarfile
 import tempfile
 import uuid
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -26,12 +27,14 @@ from core.baselines.store import BaselineStore
 from core.db.models import SCAN_EXTENSIONS
 from core.priorwork.compare import eligible
 from core.priorwork.model import MatchSettings, Report
+from core.priorwork.related import Embedder
 from core.priorwork.run import BaselineRef, CompareRequest, run_comparison, starter_runs
 from scripts.baselines import OWN_TEAM, BaselineFixture, load_baseline_fixtures, load_scanner
 from scripts.fixtures import FIXTURES_DIR, IGNORED
 
 MAX_FILE_BYTES = 1024 * 1024
 MIN_TEAMS = 3
+RELATED_MIN_SCORE = 0.80
 SETTINGS = MatchSettings()
 
 
@@ -119,7 +122,13 @@ def _make(fixture: BaselineFixture, label: str, copy: Path) -> tuple[list[Path],
     return locked, really
 
 
-def run_fixture(fixture: BaselineFixture, work: Path) -> tuple[Report, dict[str, Any]]:
+def run_fixture(
+    fixture: BaselineFixture,
+    work: Path,
+    *,
+    embedder_factory: Callable[[], Embedder] | None = None,
+    related_min_score: float = RELATED_MIN_SCORE,
+) -> tuple[Report, dict[str, Any]]:
     """The fixture's report, and each device label's scan as the scanner saw it."""
     key, root = os.urandom(32), work / "store"
     refs: list[BaselineRef] = []
@@ -160,8 +169,26 @@ def run_fixture(fixture: BaselineFixture, work: Path) -> tuple[Report, dict[str,
         starter_runs=starters,
         min_teams=MIN_TEAMS,
         settings=SETTINGS,
+        embedder_factory=embedder_factory,
+        related_min_score=related_min_score,
     )
     return run_comparison(request), scans
+
+
+def _fake() -> tuple[Callable[[], Embedder] | None, float]:
+    from tests.priorwork_fakes import FAKE_MIN_SCORE, fake_embedder
+
+    return fake_embedder, FAKE_MIN_SCORE
+
+
+def _off() -> tuple[Callable[[], Embedder] | None, float]:
+    return None, RELATED_MIN_SCORE
+
+
+EMBEDDERS: dict[str, Callable[[], tuple[Callable[[], Embedder] | None, float]]] = {
+    "fake": _fake,
+    "off": _off,
+}
 
 
 def summary(report: Report, work: Path) -> dict[str, Any]:
@@ -241,6 +268,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--only", help="comma-separated fixture IDs, e.g. B1-copied,B5-scan")
     parser.add_argument("--show", action="store_true", help="print every match")
+    parser.add_argument(
+        "--embedder",
+        choices=sorted(EMBEDDERS),
+        default="fake",
+        help="what scores the possibly-related pairs: the tests' bag of names (the default), "
+        "the worker's model (inside the worker image), or none",
+    )
     parser.add_argument("--root", type=Path, default=FIXTURES_DIR, help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     wanted = set(args.only.split(",")) if args.only else None
@@ -250,7 +284,10 @@ def main(argv: list[str] | None = None) -> int:
             continue
         with tempfile.TemporaryDirectory(prefix="hp-baseline-") as scratch:
             work = Path(scratch)
-            report, scans = run_fixture(fixture, work)
+            factory, min_score = EMBEDDERS[args.embedder]()
+            report, scans = run_fixture(
+                fixture, work, embedder_factory=factory, related_min_score=min_score
+            )
             got = summary(report, work)
             problems = differences(fixture, report, scans, work)
         state = "ok" if not problems else "DIFFERENT"

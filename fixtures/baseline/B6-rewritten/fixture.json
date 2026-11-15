@@ -1,0 +1,6 @@
+{
+  "title": "The device's distance code written again with other names, structure and comments",
+  "devices": {"laptop": {"folder": "laptop", "team": "own", "late": false}},
+  "starter": null,
+  "make": []
+}

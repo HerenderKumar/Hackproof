@@ -14,6 +14,7 @@ from core.priorwork.compare import compare
 from core.priorwork.fingerprint import run_hashes, winnow
 from core.priorwork.lexer import tokenize
 from core.priorwork.model import MatchSettings
+from core.priorwork.related import pick_old_files
 from tests.baseline_flow import entry, make_part, pack, sha
 from tests.priorwork_fakes import MemoryBaseline, block, nobody, source
 
@@ -180,3 +181,36 @@ def test_an_indexed_baseline_gives_the_matches_a_memory_one_gives(tmp_path: Path
     from_memory = report(MemoryBaseline(str(baseline), old))
     from_index = report(_open(tmp_path, baseline))
     assert from_index == from_memory
+
+
+def test_the_index_knows_which_contents_hold_a_name(tmp_path: Path) -> None:
+    old = {
+        "geo/a.js": "function haversine(radius) { return radius; }",
+        "geo/b.py": "def haversine():\n    return 1\n",
+        "copy/a.js": "function haversine(radius) { return radius; }",
+        "other.js": "function unrelated() {}",
+    }
+    baseline = _build(tmp_path, make_part({p: t.encode() for p, t in old.items()}))
+    indexed, memory = _open(tmp_path, baseline), MemoryBaseline(str(baseline), old)
+    names = ["haversine", "radius", "missing"]
+    for base in (indexed, memory):
+        assert base.contents() == 3
+        assert base.name_counts(names) == {"haversine": 2, "radius": 1}
+        held = base.holding(names)
+        assert sorted((ext, sorted(n)) for ext, n in held.values()) == [
+            (".js", ["haversine", "radius"]),
+            (".py", ["haversine"]),
+        ]
+        js = next(content for content, (ext, _) in held.items() if ext == ".js")
+        assert (base.ref(js).path, base.ref(js).other_paths) == ("copy/a.js", 1)
+
+
+def test_an_index_built_before_names_offers_no_old_file(tmp_path: Path) -> None:
+    baseline = _build(tmp_path, make_part({"a.js": b"function haversine() { return 1; }"}))
+    with sqlite3.connect(_store(tmp_path).index_path(baseline)) as db:
+        db.execute("DROP TABLE names")
+    db.close()
+    indexed = _open(tmp_path, baseline)
+    assert indexed.name_counts(["haversine"]) == {} and indexed.holding(["haversine"]) == {}
+    final = source("b.js", "function haversine() { return 2; }")
+    assert pick_old_files(final, [indexed]) == []

@@ -10,15 +10,16 @@ import os
 import sqlite3
 import time
 import uuid
-from collections import OrderedDict
+from collections import Counter, OrderedDict
 from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 from core.baselines.parts import MAX_UNPACKED_BYTES, Entry, check_part
 from core.baselines.store import BaselineStore
 from core.priorwork.fingerprint import run_hashes, winnow
-from core.priorwork.lexer import tokenize
+from core.priorwork.lexer import NAME, tokenize
 from core.priorwork.model import MatchSettings, OldRef
 
 SCHEMA = """
@@ -31,6 +32,8 @@ CREATE INDEX files_by_hash ON files (sha256_device);
 CREATE INDEX files_by_content ON files (content_id);
 CREATE TABLE fingerprints (hash INTEGER NOT NULL, content_id INTEGER NOT NULL,
                            PRIMARY KEY (hash, content_id)) WITHOUT ROWID;
+CREATE TABLE names (name TEXT NOT NULL, content_id INTEGER NOT NULL, count INTEGER NOT NULL,
+                    PRIMARY KEY (name, content_id)) WITHOUT ROWID;
 """
 
 _CHUNK = 500  # bound parameters per lookup, well under SQLite's limit
@@ -103,7 +106,8 @@ def _fill(
             if digest in content_ids:
                 continue
             ext = first_ext[digest]
-            syms = [t.sym for t in tokenize(data.decode("utf-8", errors="replace"), ext)]
+            found = tokenize(data.decode("utf-8", errors="replace"), ext)
+            syms = [t.sym for t in found]
             tokens += len(syms)
             cursor = db.execute(
                 "INSERT INTO contents (sha256_uploaded, part, ext, tokens) VALUES (?, ?, ?, ?)",
@@ -116,6 +120,11 @@ def _fill(
             db.executemany(
                 "INSERT INTO fingerprints (hash, content_id) VALUES (?, ?)",
                 [(h, content_id) for h in sorted(prints)],
+            )
+            names = Counter(t.text for t in found if t.sym == NAME)
+            db.executemany(
+                "INSERT INTO names (name, content_id, count) VALUES (?, ?, ?)",
+                [(name, content_id, n) for name, n in sorted(names.items())],
             )
     db.executemany(
         "INSERT INTO files (path, size, sha256_device, content_id, keys_blanked) "
@@ -149,6 +158,13 @@ class IndexedBaseline:
         self._store, self._baseline_id = store, baseline_id
         self._db = _read_only(store.index_path(baseline_id))
         self._parts: OrderedDict[int, dict[str, bytes]] = OrderedDict()
+        # An index built before Stage 5 has no names: it offers no old file to the related list.
+        self._named = (
+            self._db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'names'"
+            ).fetchone()
+            is not None
+        )
 
     def close(self) -> None:
         self._db.close()
@@ -187,6 +203,38 @@ class IndexedBaseline:
         found = [(self._ref(content_id), count) for content_id, count in shared.items()]
         found.sort(key=lambda pair: (-pair[1], pair[0].path))
         return found[:limit]
+
+    # NamedBaseline (core.priorwork.related)
+    def contents(self) -> int:
+        return int(self._db.execute("SELECT count(*) FROM contents").fetchone()[0])
+
+    def _named_rows(self, sql: str, names: Collection[str]) -> Iterator[tuple[Any, ...]]:
+        if not self._named:
+            return
+        items = list(names)
+        for start in range(0, len(items), _CHUNK):
+            chunk = items[start : start + _CHUNK]
+            yield from self._db.execute(sql.format(",".join("?" * len(chunk))), chunk)
+
+    def name_counts(self, names: Collection[str]) -> dict[str, int]:
+        sql = "SELECT name, count(*) FROM names WHERE name IN ({}) GROUP BY name"
+        return {name: int(n) for name, n in self._named_rows(sql, names)}
+
+    def holding(self, names: Collection[str]) -> dict[str, tuple[str, frozenset[str]]]:
+        sql = (
+            "SELECT c.sha256_uploaded, c.ext, n.name FROM names n "
+            "JOIN contents c ON c.id = n.content_id WHERE n.name IN ({})"
+        )
+        found: dict[str, tuple[str, set[str]]] = {}
+        for digest, ext, name in self._named_rows(sql, names):
+            found.setdefault(digest, (ext, set()))[1].add(name)
+        return {digest: (ext, frozenset(held)) for digest, (ext, held) in found.items()}
+
+    def ref(self, content: str) -> OldRef:
+        (content_id,) = self._db.execute(
+            "SELECT id FROM contents WHERE sha256_uploaded = ?", (content,)
+        ).fetchone()
+        return self._ref(content_id)
 
     def text(self, ref: OldRef) -> str:
         (n,) = self._db.execute(

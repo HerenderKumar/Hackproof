@@ -1,12 +1,14 @@
-"""A `Baseline` over a dictionary of path to text, for the comparison's tests."""
+"""A `Baseline` over a dictionary of path to text, and a fake `Embedder`, for the tests."""
 
 import hashlib
 import random
-from collections.abc import Collection, Mapping
+import re
+import zlib
+from collections.abc import Collection, Mapping, Sequence
 from pathlib import PurePosixPath
 
 from core.priorwork.fingerprint import run_hashes, winnow
-from core.priorwork.lexer import tokenize
+from core.priorwork.lexer import NAME, tokenize
 from core.priorwork.model import MatchSettings, OldRef, SourceFile
 
 DEFAULT_SETTINGS = MatchSettings()
@@ -58,6 +60,77 @@ class MemoryBaseline:
 
     def text(self, ref: OldRef) -> str:
         return self._texts[ref.content]
+
+    # NamedBaseline (core.priorwork.related)
+    def contents(self) -> int:
+        return len(self._texts)
+
+    def _names(self, content: str) -> set[str]:
+        ext = PurePosixPath(self._paths[content][0]).suffix
+        return {t.text for t in tokenize(self._texts[content], ext) if t.sym == NAME}
+
+    def name_counts(self, names: Collection[str]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for content in self._texts:
+            for name in self._names(content) & set(names):
+                counts[name] = counts.get(name, 0) + 1
+        return counts
+
+    def holding(self, names: Collection[str]) -> dict[str, tuple[str, frozenset[str]]]:
+        found = {}
+        for content in self._texts:
+            held = self._names(content) & set(names)
+            if held:
+                ext = PurePosixPath(self._paths[content][0]).suffix.lower()
+                found[content] = (ext, frozenset(held))
+        return found
+
+    def ref(self, content: str) -> OldRef:
+        return self._ref(content)
+
+
+_KEYWORDS = frozenset(
+    {"function", "const", "let", "var", "return", "if", "else", "for", "while", "def", "class"}
+    | {"import", "from", "in", "of", "new", "this", "self", "export", "async", "await"}
+)
+_DIMS = 1024
+
+
+def _words(text: str) -> list[str]:
+    words = []
+    for ident in re.findall(r"[A-Za-z_]\w*", text):
+        if ident in _KEYWORDS:
+            continue
+        words += [w.lower() for w in re.findall(r"[A-Z]?[a-z0-9]+|[A-Z]+(?![a-z])", ident)]
+    return words
+
+
+class FakeEmbedder:
+    """A bag-of-names vector: texts that share the words of their names score high, whatever
+    their structure. Names are split at `_` and at capitals, so `toRadians` holds `radians`."""
+
+    def __init__(self) -> None:
+        self.seen: list[str] = []
+
+    def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        self.seen += texts
+        vectors = []
+        for text in texts:
+            vector = [0.0] * _DIMS
+            for word in _words(text):
+                vector[zlib.crc32(word.encode()) % _DIMS] += 1.0
+            vectors.append(vector)
+        return vectors
+
+
+# The fake's own threshold: its scores are on another scale than a model's. B6's rewritten
+# function scores 0.78 with it; B6's other pairs 0.33 or less.
+FAKE_MIN_SCORE = 0.6
+
+
+def fake_embedder() -> FakeEmbedder:
+    """The factory a `CompareRequest` carries: top level, so it pickles into the pool."""
+    return FakeEmbedder()
 
 
 def source(path: str, text: str) -> SourceFile:

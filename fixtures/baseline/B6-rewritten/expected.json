@@ -1,0 +1,10 @@
+{
+  "percent": 0.0,
+  "late_percent": 0.0,
+  "identical_files": 0,
+  "matches": [
+    {"final_path": "src/distance.js", "kind": "possibly_related", "old_path": "projects/trail-tracker/geo.js"}
+  ],
+  "excluded_starter": false,
+  "excluded_common": false
+}

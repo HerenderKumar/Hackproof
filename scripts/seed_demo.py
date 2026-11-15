@@ -17,8 +17,10 @@ import sys
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from multiprocessing import get_context
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
@@ -64,7 +66,7 @@ from worker.main import build_handlers
 from worker.runtime import DockerRuntime
 
 Mode = Literal["replay", "record"]
-LANES: tuple[queue.Lane, ...] = ("watch", "heavy")
+LANES: tuple[queue.Lane, ...] = ("watch", "heavy", "index")  # index: prior_work (M9 scanner)
 
 
 class SeedError(Exception):
@@ -205,7 +207,9 @@ async def seed(settings: Settings, *, mode: Mode, deadline_hours: int = 48) -> S
     )
     app = create_app(api_settings, clock=clock, repo_provider=provider)
     llm = LLMClient(seed_transport(settings, mode), sessions=sessions)
-    handlers = build_handlers(settings, sessions, clock, DockerRuntime(), llm=llm)
+    # As the worker: the index lane's prior-work comparison runs in processes of its own.
+    pool = ProcessPoolExecutor(settings.index_concurrency, mp_context=get_context("spawn"))
+    handlers = build_handlers(settings, sessions, clock, DockerRuntime(), llm=llm, pool=pool)
     clients: list[httpx.AsyncClient] = []
 
     def browser() -> httpx.AsyncClient:
@@ -380,6 +384,7 @@ async def seed(settings: Settings, *, mode: Mode, deadline_hours: int = 48) -> S
     finally:
         for client in clients:
             await client.aclose()
+        pool.shutdown(cancel_futures=True)
         await engine.dispose()
 
 

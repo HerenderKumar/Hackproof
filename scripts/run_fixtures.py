@@ -34,6 +34,7 @@ from scripts.fixtures import (
     load_fixtures,
     load_history_fixtures,
 )
+from worker.door import DoorTerms
 from worker.media import expected_cases
 from worker.results import result_rows
 from worker.run_job import RunReport, build_and_run, startup_spec
@@ -240,6 +241,7 @@ def real_pipeline(
             buildkit_host=settings.buildkit_host,
             railpack_version=settings.railpack_version,
             limits=limits,
+            door_terms=DoorTerms.from_settings(settings),  # MODEL_DOOR, as the worker's run job
         )
         ui_cases, ui_missing = ui_files_of(report, plan)
         stages = stages_of(report).with_verdicts(

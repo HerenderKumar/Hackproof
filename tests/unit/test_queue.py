@@ -7,6 +7,8 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import text
 
 from core import queue
+from core.codemap import GRAPHIFY_TIMEOUT_S
+from core.settings import Settings
 from tests.helpers import Sessions, claim, enqueue, expire_lease, job_row, make_runnable_now
 
 # --- enqueue -------------------------------------------------------------------------------
@@ -48,9 +50,17 @@ def test_kinds_match_the_table_in_section_11() -> None:
         "draft_specs": ("heavy", 50, 300),
         "self_check_run": ("heavy", 10, 1200),
         "final_run": ("heavy", 100, 1200),
-        "audit": ("heavy", 100, 300),
+        "audit": ("heavy", 100, 600),  # the brief's 300 is shorter than an audit (D-053)
         "brief": ("heavy", 100, 180),
     }
+
+
+def test_the_audit_lease_outlasts_the_longest_audit() -> None:
+    settings = Settings(_env_file=None)  # type: ignore[call-arg]
+    # The time budget is checked after a step: the step under way and the final request each
+    # take up to LLM_TIMEOUT_S; Graphify runs after the audit.
+    longest = settings.audit_timeout_s + 2 * settings.llm_timeout_s + GRAPHIFY_TIMEOUT_S
+    assert queue.KINDS["audit"].lease_s > longest
 
 
 def test_poll_key_is_bucketed_by_the_poll_interval() -> None:

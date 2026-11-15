@@ -1,9 +1,10 @@
 """The final submission and its receipt (M7 design, part 6; invariant 3).
 
 A submission is one INSERT, never an UPDATE, made in one transaction with its `final_run`
-job. Its deadline is judged by the database's clock. A repeated idempotency key returns the
-stored receipt whatever the time, so a team that lost the answer can always get it back. A
-new submission before the deadline is a new row; the latest one by the deadline is judged.
+job and its `audit` job, which waits for the run (section 11.6). Its deadline is judged by the
+database's clock. A repeated idempotency key returns the stored receipt whatever the time, so
+a team that lost the answer can always get it back. A new submission before the deadline is a
+new row; the latest one by the deadline is judged.
 """
 
 import uuid
@@ -127,12 +128,20 @@ async def submit(
     submission.receipt_hash = receipt_hash(receipt_fields(submission, snapshot))
     db.add(submission)
     await db.flush()  # the row exists before the job that names it
-    await queue.enqueue(
+    final_run_id, _ = await queue.enqueue(
         db,
         "final_run",
         queue.final_run_key(submission.id),
         submission_id=submission.id,
         team_id=team.id,
+    )
+    await queue.enqueue(
+        db,
+        "audit",
+        queue.audit_key(submission.id),
+        submission_id=submission.id,
+        team_id=team.id,
+        depends_on=final_run_id,
     )
     await db.commit()
     return _receipt(submission, snapshot, team)

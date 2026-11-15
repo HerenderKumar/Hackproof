@@ -13,6 +13,7 @@ from core.logging import configure_logging, get_logger
 from core.providers import make_provider
 from core.settings import Settings, get_settings
 from worker import heartbeat, lanes, scheduler
+from worker.audit_job import make_audit_handler
 from worker.cleanup import startup_cleanup
 from worker.draft_job import make_draft_handler
 from worker.loops import every, wait_until
@@ -29,12 +30,14 @@ def build_handlers(
     """Job handlers by kind. Each pipeline milestone adds its own."""
     provider = make_provider(settings, clock)
     run = make_run_handler(sessions, runtime, settings, clock)
+    llm = make_llm_client(settings, sessions)
     return {
         "prepare_snapshot": make_prepare_snapshot(
             sessions, provider, settings.artifact_dir / "archives"
         ),
-        "draft_specs": make_draft_handler(sessions, make_llm_client(settings, sessions), settings),
+        "draft_specs": make_draft_handler(sessions, llm, settings),
         **dict.fromkeys(RUN_KINDS, run),
+        "audit": make_audit_handler(sessions, llm, settings),
     }
 
 

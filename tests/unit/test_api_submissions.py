@@ -111,6 +111,25 @@ async def test_a_submission_returns_a_receipt_and_queues_the_final_run(
     )
 
 
+async def test_a_submission_queues_an_audit_after_its_final_run(
+    api: Api, clock: FakeClock, sessions: Sessions
+) -> None:
+    flow, snap, _ = await ready(api, clock, sessions)
+
+    assert (await submit(flow, snap.id)).status_code == 201
+
+    [row] = await submissions(sessions)
+    jobs = await all_jobs(sessions)
+    [final_run] = [job for job in jobs if job.kind == "final_run"]
+    [audit] = [job for job in jobs if job.kind == "audit"]
+    assert (audit.submission_id, audit.team_id, audit.idempotency_key, audit.depends_on) == (
+        row.id,
+        flow.team_id,
+        queue.audit_key(row.id),
+        final_run.id,
+    )
+
+
 async def test_the_receipt_hash_recomputes_from_the_stored_row(
     api: Api, clock: FakeClock, sessions: Sessions
 ) -> None:
@@ -163,7 +182,8 @@ async def test_two_simultaneous_submits_with_one_key_store_one_submission(
     assert sorted((one.status_code, two.status_code)) == [200, 201], (one.text, two.text)
     assert one.json() == two.json()
     assert len(await submissions(sessions)) == 1
-    assert len([job for job in await all_jobs(sessions) if job.kind == "final_run"]) == 1
+    kinds = [job.kind for job in await all_jobs(sessions)]
+    assert (kinds.count("final_run"), kinds.count("audit")) == (1, 1)
 
 
 async def test_a_new_commit_needs_no_new_approval(

@@ -20,6 +20,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core import queue
+from core.claims import claim_fields
 from core.db import models
 from core.db.engine import Sessions
 from core.drafting import Drafted, StartText, draft_tests
@@ -30,8 +31,6 @@ from core.specs import spec_hash
 from worker.lanes import Handler, Outcome
 
 log = get_logger()
-
-_CLAIM_FIELDS = ("id", "text", "target", "example_input", "expected_behaviour")
 
 
 def make_draft_handler(sessions: Sessions, client: LLMClient, settings: Settings) -> Handler:
@@ -56,7 +55,7 @@ def make_draft_handler(sessions: Sessions, client: LLMClient, settings: Settings
         start = StartText(
             problem_statement=claims.problem_statement,
             explanation=claims.explanation,
-            claims=[_claim(item) for item in claims.items],
+            claims=[claim_fields(item) for item in claims.items],
         )
         drafts = await draft_tests(
             client,
@@ -149,9 +148,3 @@ def _row(
         status=drafted.status,
         clarification_reason=drafted.reason or None,
     )
-
-
-def _claim(item: Any) -> dict[str, str]:
-    """A stored claim as text fields. Anything missing reads as empty."""
-    values = item if isinstance(item, dict) else {}
-    return {name: str(values.get(name) or "") for name in _CLAIM_FIELDS}

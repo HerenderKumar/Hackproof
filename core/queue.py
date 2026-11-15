@@ -29,7 +29,10 @@ class Kind:
 
 
 # Section 11.1. A lease must outlast the worst case for its kind: a run is at most
-# BUILD_TIMEOUT_S + RUN_TIMEOUT_S = 18 minutes. Raise the lease with any timeout you raise.
+# BUILD_TIMEOUT_S + RUN_TIMEOUT_S = 18 minutes. An audit is at most AUDIT_TIMEOUT_S plus the
+# step under way and the final request (LLM_TIMEOUT_S each), then Graphify's 120 s: about
+# 6 minutes, so its lease is 600 s, not the brief's 300 (D-053). Raise the lease with any
+# timeout you raise.
 KINDS: dict[str, Kind] = {
     "kickoff_snapshot": Kind("watch", 90, 120),
     "poll_repo": Kind("watch", 80, 60),
@@ -37,7 +40,7 @@ KINDS: dict[str, Kind] = {
     "draft_specs": Kind("heavy", 50, 300),
     "self_check_run": Kind("heavy", 10, 1200),
     "final_run": Kind("heavy", 100, 1200),
-    "audit": Kind("heavy", 100, 300),
+    "audit": Kind("heavy", 100, 600),
     "brief": Kind("heavy", 100, 180),
 }
 
@@ -88,6 +91,11 @@ def self_check_key(snapshot_id: uuid.UUID, client_request_id: str) -> str:
 def final_run_key(submission_id: uuid.UUID) -> str:
     """One final run per submission."""
     return f"final_run:{submission_id}"
+
+
+def audit_key(submission_id: uuid.UUID) -> str:
+    """One audit per submission."""
+    return f"audit:{submission_id}"
 
 
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:

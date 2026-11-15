@@ -70,7 +70,7 @@ known-first-party = ["core", "api", "worker", "runner", "scripts", "tests"]
 
 [tool.mypy]
 python_version = "3.12"
-files = ["core", "scripts"]
+files = ["core", "scripts", "scanner"]
 strict = true
 plugins = ["pydantic.mypy"]
 

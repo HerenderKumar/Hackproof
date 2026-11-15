@@ -6,7 +6,7 @@ from typing import Any
 import pytest
 
 from core.spec_rules import problems
-from core.specs import ApiSpec
+from core.specs import ApiSpec, StartupSpec, parse_spec
 from scripts.fixtures import load_fixtures
 from tests import spec_examples
 
@@ -28,10 +28,12 @@ def test_every_hand_written_fixture_spec_meets_the_rules() -> None:
     specs = [spec for fixture in load_fixtures() for spec in fixture.specs]
 
     assert {spec["claim_type"] for spec in specs} == {
-        "calculation", "create_update", "classification", "authentication",
+        "calculation", "create_update", "classification", "authentication", "ui_workflow",
     }  # fmt: skip
     for spec in specs:
-        assert check(spec) == []
+        parsed = parse_spec(spec)
+        assert not isinstance(parsed, StartupSpec)
+        assert problems(parsed) == []
 
 
 # --- every test ----------------------------------------------------------------------------------

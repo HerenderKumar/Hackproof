@@ -12,7 +12,7 @@ import structlog
 from core.drafting import Drafted
 from core.llm import LLMClient, replay_transport, request_key
 from core.settings import Settings, get_settings
-from core.specs import ApiSpec
+from core.specs import ApiSpec, UiSpec
 from scripts import run_drafts
 from scripts.fixtures import FIXTURES_DIR, load_drafting_cases, load_fixtures
 from scripts.run_drafts import (
@@ -48,7 +48,11 @@ def quiet_logs() -> Iterator[None]:
 
 
 def drafted(document: dict[str, Any], claim_id: str = "c1") -> Drafted:
-    spec = ApiSpec.model_validate({**document, "claim_id": claim_id}).model_dump(by_alias=True)
+    if document.get("kind") == "ui":
+        ui = UiSpec.model_validate({**document, "claim_id": claim_id})
+        spec = ui.model_dump(by_alias=True, exclude_none=True)
+    else:
+        spec = ApiSpec.model_validate({**document, "claim_id": claim_id}).model_dump(by_alias=True)
     return Drafted(claim_id, spec["claim_type"], "draft", "", spec)
 
 

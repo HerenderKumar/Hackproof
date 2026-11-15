@@ -23,6 +23,7 @@ import pytest
 
 from core.settings import Settings
 from scripts.fixtures import FIXTURES_DIR
+from tests import spec_examples
 from worker.build import build_image, image_tag
 from worker.runtime import ATTEMPT_LABEL, ContainerSpec, DockerRuntime
 from worker.sandbox import (
@@ -232,7 +233,9 @@ async def test_no_container_inherits_anything_from_the_worker_environment(
 # --- whole runs ----------------------------------------------------------------------------------
 
 
-async def build_and_run(dk: Docker, src: Path) -> RunOutcome:
+async def build_and_run(
+    dk: Docker, src: Path, specs: list[dict[str, object]] | None = None
+) -> RunOutcome:
     attempt_id = dk.attempt()
     work = dk.artifacts / "work" / str(attempt_id)
     built = await build_image(
@@ -254,7 +257,7 @@ async def build_and_run(dk: Docker, src: Path) -> RunOutcome:
         attempt_id=attempt_id,
         run_dir=dk.run_dir(attempt_id),
         mode="final",
-        specs=[STARTUP_SPEC],
+        specs=[STARTUP_SPEC, *(specs or [])],
         limits=dk.limits,
         app_log_path=work / "app.log",
     )
@@ -326,3 +329,67 @@ async def test_an_app_on_its_own_port_is_found_through_the_ports_it_exposes(
         "candidate_ports": [8080, 3000],
         "port": 3000,
     }
+
+
+# --- UI tests (M11, D-058) -----------------------------------------------------------------------
+
+# Exit 0 if a page in the runner's sandboxed Chromium can fetch the URL, 3 if it cannot,
+# 4 if the browser would not start.
+BROWSER_FETCH = """
+import sys
+from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    try:
+        browser = p.chromium.launch(chromium_sandbox=True)
+    except Exception as exc:
+        print("no browser:", exc)
+        sys.exit(4)
+    page = browser.new_page()
+    page.set_content("<p>probe</p>")
+    fetch = "u => fetch(u, {mode: 'no-cors'}).then(() => 'reached', e => 'blocked ' + e)"
+    got = page.evaluate(fetch, sys.argv[1])
+    print(got)
+    sys.exit(0 if got == "reached" else 3)
+"""
+
+
+async def test_the_runners_browser_starts_sandboxed_and_cannot_reach_the_internet(
+    dk: Docker, open_network: str
+) -> None:
+    attempt_id = dk.attempt()
+    await dk.runtime.create_network(network_name(attempt_id), str(attempt_id))
+    runner = runner_container(attempt_id, dk.run_dir(attempt_id), dk.limits, browser=True)
+    assert runner.seccomp and runner.init and runner.shm_size == "512m"
+
+    sealed = await dk.start(runner, "python", "-c", BROWSER_FETCH, "https://example.com/")
+    control = await dk.start(
+        dataclasses.replace(runner, name=f"{runner.name}-control", network=open_network),
+        "python", "-c", BROWSER_FETCH, "https://example.com/",
+    )  # fmt: skip
+
+    assert await dk.exit_code(control, within_s=120) == 0, await dk.logs(control)
+    assert await dk.exit_code(sealed, within_s=120) == 3, await dk.logs(sealed)
+
+
+@pytest.mark.parametrize(("variant", "verdict"), [("good", "pass"), ("broken", "fail")])
+async def test_f05_runs_in_the_browser_and_leaves_its_files(
+    dk: Docker, tmp_path: Path, variant: str, verdict: str
+) -> None:
+    src = tmp_path / "src"
+    shutil.copytree(FIXTURES_DIR / "F05-static-packing-list" / variant, src)
+    ui = spec_examples.F05 | {"spec_id": "u1", "practice_cases": []}
+
+    outcome = await build_and_run(dk, src, [ui])
+
+    assert outcome.startup_status == "ok", outcome.startup_detail
+    assert outcome.flags_used["browser_sandbox"] is True
+    assert outcome.flags_used["media_dropped"] == 0
+    assert outcome.results is not None
+    tests = outcome.results["tests"]
+    assert [(t["case_id"], t["status"]) for t in tests] == [
+        ("f1", verdict), ("f2", verdict), ("f3", verdict),
+    ], tests  # fmt: skip
+    assert sorted(outcome.media) == [("u1", 1), ("u1", 2), ("u1", 3)]
+    for files in outcome.media.values():
+        assert set(files) == {"video", "trace", "poster"}
+        assert files["video"].is_relative_to(outcome.app_log_path.parent)

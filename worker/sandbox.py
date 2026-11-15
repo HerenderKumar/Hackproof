@@ -25,7 +25,8 @@ import json
 import re
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from functools import cache
 from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
@@ -33,6 +34,7 @@ from uuid import UUID
 from core.errors import InfraError
 from core.logging import get_logger
 from core.settings import Settings
+from worker.media import Media, collect
 from worker.runtime import ContainerRuntime, ContainerSpec, ContainerState
 
 APP_PORT = 8080
@@ -42,6 +44,8 @@ APP_ENV = {"PORT": str(APP_PORT), "HOST": "0.0.0.0", "NODE_ENV": "production"}
 BASE_URL = f"http://{APP_ALIAS}:{APP_PORT}"
 APP_LOG_LINES = 200
 RUN_DIR_IN_RUNNER = "/work"
+RUNNER_SHM = "512m"
+SECCOMP_PROFILE = Path(__file__).resolve().parents[1] / "runner" / "seccomp_profile.json"
 
 _PERMISSION_PROBLEM = re.compile(
     r"EACCES|EROFS|permission denied|read-only file system", re.IGNORECASE
@@ -59,10 +63,16 @@ class SandboxLimits:
     runner_memory: str
     startup_timeout_s: int
     run_timeout_s: float
+    runner_pids_limit: int = 512
+    runner_cpus: float = 2.0
+    browser_sandbox: bool = True
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SandboxLimits":
         return cls(
+            runner_pids_limit=settings.runner_pids_limit,
+            runner_cpus=settings.runner_cpus,
+            browser_sandbox=settings.runner_browser_sandbox,
             runner_image=settings.runner_image,
             app_memory=settings.app_memory,
             app_cpus=settings.app_cpus,
@@ -81,6 +91,7 @@ class RunOutcome:
     results: dict[str, Any] | None  # the runner's results.json; None if it did not finish
     app_log_path: Path
     timed_out: bool
+    media: Media = field(default_factory=dict)  # the UI files kept (worker/media.py)
 
 
 @dataclass(frozen=True)
@@ -105,6 +116,7 @@ async def run_sandboxed(
 ) -> RunOutcome:
     attempt = str(attempt_id)
     network = network_name(attempt_id)
+    browser = any(spec.get("kind") == "ui" for spec in specs)
     deadline = time.monotonic() + limits.run_timeout_s
     started: list[str] = []
     network_id: str | None = None
@@ -112,7 +124,8 @@ async def run_sandboxed(
     async def one_pass(strict: bool) -> _Pass:
         app = app_container(image, attempt_id, limits, strict=strict)
         app_id = await _start(runtime, started, app)
-        runner_id = await _start(runtime, started, runner_container(attempt_id, run_dir, limits))
+        runner = runner_container(attempt_id, run_dir, limits, browser=browser)
+        runner_id = await _start(runtime, started, runner)
         return await _watch(runtime, app_id, runner_id, run_dir, deadline, limits, poll_s)
 
     try:
@@ -149,6 +162,13 @@ async def run_sandboxed(
             except Exception:
                 log.warning("run_cleanup_failed", what="network", id=network_id, exc_info=True)
 
+    flags: dict[str, Any] = {}
+    collected = None
+    if browser:
+        destination = app_log_path.parent / "ui"
+        collected = await asyncio.to_thread(collect, run_dir, specs, mode, destination)
+        flags = {"browser_sandbox": limits.browser_sandbox, "media_dropped": collected.dropped}
+
     ok = result.startup.get("status") == "ok"
     outcome = RunOutcome(
         startup_status="ok" if ok else "fail",
@@ -157,10 +177,12 @@ async def run_sandboxed(
             "root_fallback": root_fallback,
             "candidate_ports": candidates,
             "port": result.startup.get("port") if ok else None,
+            **flags,
         },
         results=result.results,
         app_log_path=app_log_path,
         timed_out=result.timed_out,
+        media=collected.media if collected is not None else {},
     )
     log.info(
         "run_finished",
@@ -197,19 +219,38 @@ def app_container(
     )
 
 
-def runner_container(attempt_id: UUID, run_dir: Path, limits: SandboxLimits) -> ContainerSpec:
-    """The test runner, as the runner image's own non-root user, with the run folder at /work."""
+def runner_container(
+    attempt_id: UUID, run_dir: Path, limits: SandboxLimits, *, browser: bool = False
+) -> ContainerSpec:
+    """The test runner, as the runner image's own non-root user, with the run folder at /work.
+
+    With `browser` (the run carries a UI test) it also gets an init process, a private 512 MB
+    /dev/shm, more processes, its own CPUs and the seccomp profile that lets Chromium sandbox
+    itself (D-058). Every other restriction is the same."""
     network = network_name(attempt_id)
+    environment = {"BASE_URL": BASE_URL}
+    if browser:
+        environment["RUNNER_BROWSER_SANDBOX"] = "true" if limits.browser_sandbox else "false"
     return ContainerSpec(
         name=f"{network}-runner",
         image=limits.runner_image,
         network=network,
         attempt=str(attempt_id),
-        environment={"BASE_URL": BASE_URL},
+        environment=environment,
         memory=limits.runner_memory,
-        pids_limit=limits.app_pids_limit,
+        cpus=limits.runner_cpus if browser else None,
+        pids_limit=limits.runner_pids_limit if browser else limits.app_pids_limit,
         mounts=((str(run_dir), RUN_DIR_IN_RUNNER),),
+        init=browser,
+        shm_size=RUNNER_SHM if browser else None,
+        seccomp=seccomp_profile() if browser else None,
     )
+
+
+@cache
+def seccomp_profile() -> str:
+    """The runner's seccomp profile as compact JSON: the Docker API takes the text, not a path."""
+    return json.dumps(json.loads(SECCOMP_PROFILE.read_text()), separators=(",", ":"))
 
 
 # --- helpers -------------------------------------------------------------------------------------

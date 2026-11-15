@@ -20,7 +20,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from core.drafting import StartText
-from core.specs import ApiSpec
+from core.specs import ApiSpec, UiSpec
 
 FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
@@ -234,15 +234,14 @@ def _load_specs(path: Path, slug: str, claim_types: dict[str, str]) -> list[dict
     where = f"{slug}/specs.json"
     specs, seen = [], set()
     for item in _read_json(path, list):
+        model = UiSpec if isinstance(item, dict) and item.get("kind") == "ui" else ApiSpec
         try:
-            spec = ApiSpec.model_validate(item)
+            spec: ApiSpec | UiSpec = model.model_validate(item)
         except ValidationError as exc:
             raise FixtureError(f"{where}: {exc}") from None
         claim_type = claim_types.get(spec.claim_id)
         if claim_type is None:
             raise FixtureError(f"{where}: fixture.json has no claim {spec.claim_id}")
-        if claim_type == "ui_workflow":
-            raise FixtureError(f"{where}: {spec.claim_id} is a UI claim; UI specs arrive in M11")
         if spec.claim_type != claim_type:
             raise FixtureError(
                 f"{where}: {spec.claim_id} is a {claim_type} claim, not {spec.claim_type}"
@@ -250,7 +249,8 @@ def _load_specs(path: Path, slug: str, claim_types: dict[str, str]) -> list[dict
         if spec.claim_id in seen:
             raise FixtureError(f"{where}: one spec per claim, and {spec.claim_id} has two")
         seen.add(spec.claim_id)
-        specs.append(spec.model_dump(by_alias=True))
+        # A UI spec leaves out the fields its steps do not use, as it is written.
+        specs.append(spec.model_dump(by_alias=True, exclude_none=isinstance(spec, UiSpec)))
     return specs
 
 

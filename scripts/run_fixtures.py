@@ -3,9 +3,9 @@
 Each app variant goes through the real pipeline: its repository under `LOCAL_REMOTES_DIR` is
 snapshotted by the local provider, the archive is built and run in final mode with the
 fixture's hand-written specs (`specs.json`), and the build, startup and verdict stages are
-compared with `expected.json`. Verdicts come from the same mapping the run job uses. UI claims
-are not compared until UI tests exist (M11); audit and brief join in later milestones. Runs
-inside the worker image (Railpack, Docker, the runner image).
+compared with `expected.json`. Verdicts come from the same mapping the run job uses. A UI claim
+is compared like any other, and every one of its cases must also leave a video and a trace that
+the worker kept (M11). Runs inside the worker image (Railpack, Docker, the runner image).
 
 `--list` only lists the suite. `--only F08,F06-fastapi-distance-broken` runs the variants whose
 fixture ID or repository name starts with one of the given names.
@@ -16,7 +16,7 @@ import asyncio
 import sys
 import time
 import uuid
-from collections.abc import Awaitable, Callable, Collection
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -34,6 +34,7 @@ from scripts.fixtures import (
     load_fixtures,
     load_history_fixtures,
 )
+from worker.media import expected_cases
 from worker.results import result_rows
 from worker.run_job import RunReport, build_and_run, startup_spec
 from worker.run_specs import RunPlan
@@ -53,6 +54,8 @@ class Stages:
     notes: str = ""  # a fallback the run needed, or a port other than 8080
     verdicts: dict[str, str] | None = None  # per claim; None when the stage did not run
     reasons: dict[str, str] = field(default_factory=dict)  # why a claim failed or is unverified
+    ui_cases: int = 0  # UI cases the run carried
+    ui_missing_files: list[str] = field(default_factory=list)  # cases without a video and trace
 
     def with_verdicts(self, verdicts: dict[str, str], reasons: dict[str, str]) -> "Stages":
         return replace(self, verdicts=verdicts, reasons=reasons)
@@ -93,6 +96,19 @@ def stages_of(report: RunReport) -> Stages:
         str(run.app_log_path),
         ", ".join(notes),
     )
+
+
+def ui_files_of(report: RunReport, plan: RunPlan) -> tuple[int, list[str]]:
+    """How many UI cases ran, and which of them did not leave both a video and a trace."""
+    cases = expected_cases(plan.runnable, plan.mode)
+    if report.run is None or report.run.startup_status != "ok":
+        return len(cases), []
+    missing = [
+        f"{spec_id[:8]} case {number}"
+        for spec_id, number in cases
+        if not {"video", "trace"} <= set(report.run.media.get((spec_id, number), {}))
+    ]
+    return len(cases), missing
 
 
 def verdicts_of(report: RunReport, plan: RunPlan, claim_ids: list[str]) -> dict[str, str]:
@@ -136,9 +152,7 @@ def _short(value: Any, limit: int = 60) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
 
 
-def compare(
-    expected: dict[str, Any], stages: Stages, *, ui_claims: Collection[str] = frozenset()
-) -> list[str]:
+def compare(expected: dict[str, Any], stages: Stages) -> list[str]:
     differences = []
     for stage in ("build", "startup"):
         actual = getattr(stages, stage)
@@ -147,8 +161,11 @@ def compare(
     if stages.verdicts is not None:
         for claim, wanted in sorted(expected["verdicts"].items()):
             got = stages.verdicts.get(claim)
-            if claim not in ui_claims and got != wanted:
+            if got != wanted:
                 differences.append(f"{claim}: expected {wanted}, got {got}")
+    if stages.ui_missing_files:
+        missing = ", ".join(stages.ui_missing_files)
+        differences.append(f"UI files: no video and trace kept for {missing}")
     return differences
 
 
@@ -164,16 +181,16 @@ async def run_suite(selected: list[tuple[Fixture, Variant]], pipeline: Pipeline)
             print(f"{name}  ERROR     {type(exc).__name__}: {exc}", flush=True)
             continue
         seconds = time.monotonic() - started
-        ui_claims = {c for c, kind in fixture.claim_types.items() if kind == "ui_workflow"}
-        differences = compare(variant.expected, stages, ui_claims=ui_claims)
+        differences = compare(variant.expected, stages)
         verdict = "match" if not differences else "MISMATCH"
         notes = [stages.notes] if stages.notes else []
         if stages.verdicts is not None:
-            shown = {c: v for c, v in sorted(stages.verdicts.items()) if c not in ui_claims}
-            for claim, value in shown.items():
+            for claim, value in sorted(stages.verdicts.items()):
                 why = stages.reasons.get(claim)
                 notes.append(f"{claim}={value} ({why})" if why else f"{claim}={value}")
-            notes += ["UI tests arrive in M11"] if ui_claims else []
+        if stages.ui_cases:
+            kept = stages.ui_cases - len(stages.ui_missing_files)
+            notes.append(f"UI: {kept} of {stages.ui_cases} cases with video and trace")
         noted = f" [{'; '.join(notes)}]" if notes else ""
         print(
             f"{name}  build={stages.build:<4} startup={stages.startup:<7} {seconds:4.0f}s"
@@ -224,9 +241,11 @@ def real_pipeline(
             railpack_version=settings.railpack_version,
             limits=limits,
         )
-        return stages_of(report).with_verdicts(
+        ui_cases, ui_missing = ui_files_of(report, plan)
+        stages = stages_of(report).with_verdicts(
             verdicts_of(report, plan, sorted(fixture.claim_types)), reasons_of(report, plan)
         )
+        return replace(stages, ui_cases=ui_cases, ui_missing_files=ui_missing)
 
     return pipeline
 

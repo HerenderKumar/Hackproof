@@ -49,6 +49,11 @@ class ContainerSpec:
     mounts: tuple[tuple[str, str], ...] = ()  # (host path, container path), read-write
     # Replaces the image's entrypoint and command together; None runs the image as built.
     command: tuple[str, ...] | None = None
+    # The runner of a run with UI tests (M11, D-058): an init process to reap the browser's
+    # children, a private /dev/shm of this size, and a seccomp profile's JSON text.
+    init: bool = False
+    shm_size: str | None = None
+    seccomp: str | None = None
 
 
 @dataclass(frozen=True)
@@ -172,8 +177,13 @@ class DockerRuntime:
             host_config = api.create_host_config(
                 network_mode=spec.network,
                 cap_drop=CAP_DROP,
-                security_opt=SECURITY_OPT,
+                security_opt=[
+                    *SECURITY_OPT,
+                    *([f"seccomp={spec.seccomp}"] if spec.seccomp else []),
+                ],
                 read_only=spec.read_only,
+                init=spec.init or None,
+                shm_size=spec.shm_size,
                 tmpfs=TMPFS,
                 mem_limit=spec.memory,
                 memswap_limit=spec.memory,

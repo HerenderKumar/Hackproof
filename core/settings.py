@@ -71,6 +71,11 @@ class Settings(BaseSettings):
     app_cpus: float = 1.0
     app_pids_limit: int = 256
     runner_memory: str = "2g"
+    # A run with UI tests (M11): the runner's browser needs more processes and its own CPUs.
+    runner_pids_limit: int = 512
+    runner_cpus: float = 2.0
+    # Chromium's own sandbox (D-058). Off only on a host whose kernel refuses it.
+    runner_browser_sandbox: bool = True
 
     # Worker
     watch_concurrency: int = 4

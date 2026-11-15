@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from core.specs import ApiSpec
+from core.specs import ApiSpec, UiSpec, parse_spec
 from scripts import run_fixtures
 from scripts.fixtures import (
     FIXTURES_DIR,
@@ -241,13 +241,12 @@ def test_listing_shows_nineteen_variants_and_two_history_fixtures(
 # --- hand-written specs (M5) ---------------------------------------------------------------------
 
 
-def test_every_claim_except_ui_ones_has_exactly_one_valid_spec() -> None:
+def test_every_claim_has_exactly_one_valid_spec() -> None:
     for fixture in load_fixtures():
-        api_claims = {c for c, t in fixture.claim_types.items() if t != "ui_workflow"}
-        assert sorted(spec["claim_id"] for spec in fixture.specs) == sorted(api_claims), fixture.id
+        assert sorted(spec["claim_id"] for spec in fixture.specs) == sorted(fixture.claim_types)
         for spec in fixture.specs:
             assert spec["claim_type"] == fixture.claim_types[spec["claim_id"]], fixture.id
-            ApiSpec.model_validate(spec)
+            parse_spec(spec)
 
 
 def test_the_shared_test_specs_are_the_fixtures_own() -> None:
@@ -258,6 +257,9 @@ def test_the_shared_test_specs_are_the_fixtures_own() -> None:
         assert by_id[fixture_id].specs == [
             ApiSpec.model_validate(document).model_dump(by_alias=True)
         ]
+    assert by_id["F05"].specs == [
+        UiSpec.model_validate(spec_examples.F05).model_dump(by_alias=True, exclude_none=True)
+    ]
 
 
 def write_specs(root: Path, specs: list[dict[str, Any]]) -> None:

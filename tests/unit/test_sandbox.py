@@ -425,3 +425,86 @@ async def test_cleanup_also_follows_a_container_that_never_started(
 
     assert runtime.containers == {}
     assert runtime.networks == {}
+
+
+# --- a run with UI tests (M11) -------------------------------------------------------------------
+
+UI_SPEC = {
+    "spec_id": "u1", "kind": "ui", "claim_id": "c1", "claim_type": "ui_workflow", "steps": [],
+    "practice_cases": [], "final_cases": [{"id": "f1"}, {"id": "f2"}],
+}  # fmt: skip
+WEBM = bytes.fromhex("1a45dfa3") + b"video"
+
+
+def writes_ui_files(runtime: FakeRuntime, container_id: str, spec: ContainerSpec) -> None:
+    work = Path(spec.mounts[0][0])
+    case = work / "ui" / "u1" / "1"
+    case.mkdir(parents=True)
+    (case / "video.webm").write_bytes(WEBM)
+    (case / "trace.zip").write_bytes(b"not a zip")
+    reports(UP)(runtime, container_id, spec)
+
+
+async def run_ui(
+    runtime: FakeRuntime, run_dir: Path, app_log: Path, **limits: object
+) -> RunOutcome:
+    changed = SandboxLimits(**{**LIMITS.__dict__, **limits})
+    return await asyncio.wait_for(
+        run_sandboxed(runtime, image=IMAGE, attempt_id=ATTEMPT, run_dir=run_dir, mode="final",
+                      specs=[*SPECS, UI_SPEC], limits=changed, app_log_path=app_log, poll_s=0.01),
+        timeout=10,
+    )  # fmt: skip
+
+
+async def test_a_ui_runs_runner_gets_what_the_browser_needs_and_nothing_else(
+    run_dir: Path, app_log: Path
+) -> None:
+    runtime = scripted([stays_up], [reports(UP)])
+
+    await run_ui(runtime, run_dir, app_log)
+
+    (runner,) = runtime.started(app=False)
+    assert (runner.init, runner.shm_size, runner.cpus, runner.pids_limit) == (
+        True,
+        "512m",
+        2.0,
+        512,
+    )
+    assert runner.environment == {"BASE_URL": "http://app:8080", "RUNNER_BROWSER_SANDBOX": "true"}
+    profile = json.loads(runner.seccomp or "")
+    assert profile["defaultAction"] == "SCMP_ACT_ERRNO"
+    assert "chroot" in next(s["names"] for s in profile["syscalls"] if "unshare" in s["names"])
+    assert (runner.read_only, runner.user, runner.alias) == (True, None, None)
+    (app,) = runtime.started(app=True)
+    assert (app.init, app.shm_size, app.seccomp) == (False, None, None)
+
+
+async def test_the_browser_sandbox_can_be_switched_off_and_is_recorded(
+    run_dir: Path, app_log: Path
+) -> None:
+    runtime = scripted([stays_up], [reports(UP)])
+
+    outcome = await run_ui(runtime, run_dir, app_log, browser_sandbox=False)
+
+    (runner,) = runtime.started(app=False)
+    assert runner.environment["RUNNER_BROWSER_SANDBOX"] == "false"
+    assert outcome.flags_used["browser_sandbox"] is False
+
+
+async def test_a_ui_runs_files_are_checked_and_moved_beside_the_logs(
+    run_dir: Path, app_log: Path
+) -> None:
+    runtime = scripted([stays_up], [writes_ui_files])
+
+    outcome = await run_ui(runtime, run_dir, app_log)
+
+    kept = app_log.parent / "ui" / "u1" / "1" / "video.webm"
+    assert outcome.media == {("u1", 1): {"video": kept}}
+    assert kept.read_bytes() == WEBM
+    assert outcome.flags_used["media_dropped"] == 1  # the trace that is not a zip
+
+
+async def test_an_api_only_run_records_no_browser_flags(run_dir: Path, app_log: Path) -> None:
+    outcome = await run(scripted([stays_up], [reports(UP)]), run_dir, app_log)
+
+    assert "browser_sandbox" not in outcome.flags_used and outcome.media == {}

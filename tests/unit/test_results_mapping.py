@@ -147,3 +147,48 @@ def test_results_for_specs_outside_the_plan_are_ignored() -> None:
     rows = result_rows(report(tests=[entry(ID2, "f1", "pass")]), plan(spec(ID1, [F1])))
 
     assert verdicts(rows) == {(ID1, None, "unverified")}
+
+
+# --- UI cases (M11) ------------------------------------------------------------------------------
+
+
+def ui_report(tests: list[dict[str, Any]], media: dict[Any, Any]) -> RunReport:
+    outcome = RunOutcome(
+        startup_status="ok", startup_detail="up", flags_used={},
+        results={"runner_version": "1", "startup": {}, "tests": tests},
+        app_log_path=Path("/l/app.log"), timed_out=False, media=media,
+    )  # fmt: skip
+    return RunReport(built(), outcome)
+
+
+def ui_entry(case_id: str, status: str, error: dict[str, str] | None = None) -> dict[str, Any]:
+    return entry(ID1, case_id, status, error) | {
+        "kind": "ui", "video_path": "ui/../../etc/passwd", "page": {"outline": "- button \"Add\""},
+    }  # fmt: skip
+
+
+def test_a_ui_case_carries_the_files_the_worker_kept_not_the_runners_paths() -> None:
+    kept = {
+        "video": Path("/a/runs/x/ui/1/2/video.webm"),
+        "trace": Path("/a/runs/x/ui/1/2/trace.zip"),
+    }
+    media = {(str(ID1), 2): kept}
+
+    rows = result_rows(ui_report([ui_entry("f1", "pass"), ui_entry("f2", "fail")], media),
+                       plan(spec(ID1)))  # fmt: skip
+
+    by_case = {row["case_id"]: row for row in rows}
+    assert (by_case["f1"]["video_path"], by_case["f1"]["trace_path"]) == (None, None)
+    assert by_case["f2"]["video_path"] == "/a/runs/x/ui/1/2/video.webm"
+    assert by_case["f2"]["trace_path"] == "/a/runs/x/ui/1/2/trace.zip"
+    assert by_case["f2"]["verdict"] == "fail"
+    assert by_case["f2"]["actual"]["page"] == {"outline": '- button "Add"'}
+
+
+@pytest.mark.parametrize("kind", ["locator_not_found", "locator_ambiguous", "timeout"])
+def test_a_control_the_page_did_not_offer_is_unverified(kind: str) -> None:
+    error = {"type": kind, "message": "nothing on the page matched: Click the button named “Add”"}
+
+    (row,) = result_rows(ui_report([ui_entry("f1", "error", error)], {}), plan(spec(ID1, [F1])))
+
+    assert (row["verdict"], row["error"]) == ("unverified", error["message"])

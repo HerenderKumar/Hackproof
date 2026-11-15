@@ -1,0 +1,83 @@
+[
+  {
+    "kind": "ui",
+    "claim_id": "c1",
+    "claim_type": "ui_workflow",
+    "steps": [
+      {
+        "id": "open",
+        "action": "goto",
+        "path": "/"
+      },
+      {
+        "id": "type",
+        "action": "fill",
+        "locator": {
+          "label": "New item"
+        },
+        "value": "{{case.input.item}}"
+      },
+      {
+        "id": "add",
+        "action": "click",
+        "locator": {
+          "role": "button",
+          "name": "Add"
+        }
+      },
+      {
+        "id": "listed",
+        "action": "expect_text",
+        "locator": {
+          "role": "list",
+          "name": "Items"
+        },
+        "text": "{{case.input.item}}"
+      },
+      {
+        "id": "cleared",
+        "action": "expect_value",
+        "locator": {
+          "label": "New item"
+        },
+        "value": ""
+      }
+    ],
+    "practice_cases": [
+      {
+        "id": "p1",
+        "input": {
+          "item": "Sunscreen"
+        },
+        "expected": {},
+        "boundary": false
+      }
+    ],
+    "final_cases": [
+      {
+        "id": "f1",
+        "input": {
+          "item": "Passport"
+        },
+        "expected": {},
+        "boundary": false
+      },
+      {
+        "id": "f2",
+        "input": {
+          "item": "Socks & sandals <2 pairs>"
+        },
+        "expected": {},
+        "boundary": true
+      },
+      {
+        "id": "f3",
+        "input": {
+          "item": "नमस्ते 🧦"
+        },
+        "expected": {},
+        "boundary": true
+      }
+    ]
+  }
+]

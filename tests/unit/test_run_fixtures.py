@@ -186,9 +186,14 @@ def test_verdict_differences_are_named() -> None:
     ]
 
 
-def test_ui_claims_are_not_compared_before_m11() -> None:
-    stages = Stages("ok", "ok", "", verdicts={"c1": "unverified"})
-    assert compare(EXPECT_FAIL, stages, ui_claims={"c1"}) == []
+def test_ui_claims_are_compared_and_must_leave_their_files() -> None:
+    stages = Stages("ok", "ok", "", verdicts={"c1": "unverified"}, ui_cases=3,
+                    ui_missing_files=["4f1c9a2b case 2"])  # fmt: skip
+
+    assert compare(EXPECT_FAIL, stages) == [
+        "c1: expected fail, got unverified",
+        "UI files: no video and trace kept for 4f1c9a2b case 2",
+    ]
 
 
 def test_verdicts_come_from_the_same_mapping_as_the_job() -> None:
@@ -257,12 +262,15 @@ async def test_the_suite_shows_why_a_claim_failed(capsys: pytest.CaptureFixture[
     assert f"c1=fail ({why})" in capsys.readouterr().out
 
 
-async def test_the_suite_marks_ui_claims_as_pending(capsys: pytest.CaptureFixture[str]) -> None:
+async def test_the_suite_shows_how_many_ui_cases_left_their_files(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     async def pipeline(fixture: Fixture, variant: Variant) -> Stages:
-        return Stages("ok", "ok", "up", verdicts={"c1": "unverified"})
+        verdict = "pass" if variant.remote_name.endswith("good") else "fail"
+        return Stages("ok", "ok", "up", verdicts={"c1": verdict}, ui_cases=3)
 
     code = await run_fixtures.run_suite(select_variants(FIXTURES, ["F05"]), pipeline)
 
     out = capsys.readouterr().out
     assert code == 0
-    assert "UI tests arrive in M11" in out
+    assert "UI: 3 of 3 cases with video and trace" in out

@@ -106,6 +106,9 @@ class Settings(BaseSettings):
     door_run_budget_usd: float = 0.05
     door_max_calls: int = 20
     door_timeout_s: float = 60.0
+    # Outside hosts a team's app may call itself, through the door's allowlist proxy (D-063):
+    # comma-separated names, `*.example.com` for subdomains. Empty: none.
+    door_egress_hosts: str = ""
 
     # Worker
     watch_concurrency: int = 4
@@ -124,6 +127,10 @@ class Settings(BaseSettings):
     @property
     def door_model_list(self) -> tuple[str, ...]:
         return tuple(m.strip() for m in self.door_models.split(",") if m.strip())
+
+    @property
+    def door_egress_host_list(self) -> tuple[str, ...]:
+        return tuple(h.strip() for h in self.door_egress_hosts.split(",") if h.strip())
 
     @property
     def prune_key(self) -> str:

@@ -194,9 +194,10 @@ async def test_the_model_list_is_answered_by_the_door(tmp_path: Path, prune: Fak
 
 
 async def test_a_stream_is_passed_through(tmp_path: Path, prune: FakePrune) -> None:
-    async with await client(tmp_path, prune) as c, c.stream(
-        "POST", "/v1/chat/completions", json=chat(stream=True), headers=AUTH
-    ) as r:
+    async with (
+        await client(tmp_path, prune) as c,
+        c.stream("POST", "/v1/chat/completions", json=chat(stream=True), headers=AUTH) as r,
+    ):
         body = b"".join([chunk async for chunk in r.aiter_raw()])
     assert r.status_code == 200 and body.endswith(b"data: [DONE]\n\n") and body.count(b"data:") == 3
     (line,) = log(tmp_path)

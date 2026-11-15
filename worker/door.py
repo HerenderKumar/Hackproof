@@ -31,6 +31,9 @@ from worker.runtime import ContainerSpec
 DOOR_ALIAS = "model-door"
 DOOR_PORT = 8080
 DOOR_URL = f"http://{DOOR_ALIAS}:{DOOR_PORT}"
+EGRESS_URL = f"http://{DOOR_ALIAS}:8081"
+# Names the app reaches inside the run, never through the proxy.
+NO_PROXY = f"{DOOR_ALIAS},app,localhost,127.0.0.1"
 DOOR_DIR_IN_CONTAINER = "/door"
 DOOR_USER = "10001:10001"
 DOOR_MEMORY = "256m"
@@ -51,6 +54,7 @@ class DoorTerms:
     run_budget_usd: float
     max_calls: int
     timeout_s: float
+    egress_hosts: tuple[str, ...] = ()
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "DoorTerms | None":
@@ -64,6 +68,7 @@ class DoorTerms:
             run_budget_usd=settings.door_run_budget_usd,
             max_calls=settings.door_max_calls,
             timeout_s=settings.door_timeout_s,
+            egress_hosts=settings.door_egress_host_list,
         )
 
 
@@ -113,6 +118,7 @@ def door_container(door: DoorRun, internal_network: str) -> ContainerSpec:
         "DOOR_CUSTOMER_ID": f"team-{door.team_id}",
         "DOOR_FEATURE_ID": door.feature,
         "DOOR_TIMEOUT_S": f"{t.timeout_s:g}",
+        "DOOR_EGRESS_HOSTS": ",".join(t.egress_hosts),
         "DOOR_LOG": f"{DOOR_DIR_IN_CONTAINER}/log.jsonl",
         "DOOR_READY": f"{DOOR_DIR_IN_CONTAINER}/ready",
     }
@@ -133,14 +139,24 @@ def door_container(door: DoorRun, internal_network: str) -> ContainerSpec:
 
 
 def app_variables(door: DoorRun) -> dict[str, str]:
-    """What the app's environment gains: the stock OpenAI and Anthropic SDKs read these."""
-    return {
+    """What the app's environment gains: the stock OpenAI and Anthropic SDKs read these. With
+    outside hosts listed, the standard proxy variables too (Python, Go and curl read them; Node
+    reads them with NODE_USE_ENV_PROXY=1)."""
+    variables = {
         "OPENAI_BASE_URL": f"{DOOR_URL}/v1",
         "OPENAI_API_KEY": door.token,
         "ANTHROPIC_BASE_URL": DOOR_URL,
         "ANTHROPIC_API_KEY": door.token,
         "HP_MODELS": ",".join(door.terms.models),
     }
+    if door.terms.egress_hosts:
+        for name in ("HTTPS_PROXY", "https_proxy"):
+            variables[name] = EGRESS_URL
+        for name in ("NO_PROXY", "no_proxy"):
+            variables[name] = NO_PROXY
+        variables["NODE_USE_ENV_PROXY"] = "1"
+        variables["HP_OUTSIDE_HOSTS"] = ",".join(door.terms.egress_hosts)
+    return variables
 
 
 def prepare_folder(door: DoorRun) -> None:

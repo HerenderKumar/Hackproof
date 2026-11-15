@@ -60,6 +60,8 @@ class DoorConfig:
     max_body_bytes: int = 262144
     max_concurrent: int = 4
     timeout_s: float = 60.0
+    egress_hosts: tuple[str, ...] = ()  # the app's own outside calls (door/egress.py)
+    max_egress: int = 200
 
     @classmethod
     def from_env(cls, env: dict[str, str] | None = None) -> "DoorConfig":
@@ -78,6 +80,10 @@ class DoorConfig:
             max_body_bytes=int(e.get("DOOR_MAX_BODY_BYTES", "262144")),
             max_concurrent=int(e.get("DOOR_MAX_CONCURRENT", "4")),
             timeout_s=float(e.get("DOOR_TIMEOUT_S", "60")),
+            egress_hosts=tuple(
+                h.strip() for h in e.get("DOOR_EGRESS_HOSTS", "").split(",") if h.strip()
+            ),
+            max_egress=int(e.get("DOOR_MAX_EGRESS", "200")),
         )
 
 

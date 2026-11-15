@@ -14,6 +14,7 @@ from tests.integration.test_sandbox import INTERNET, PYTHON, REACH, Docker
 from worker.door import (
     DoorRun,
     DoorTerms,
+    app_variables,
     door_container,
     out_network_name,
     prepare_folder,
@@ -55,7 +56,7 @@ print(reply.read().decode()); sys.exit(0)
 """
 
 
-async def open_door(dk: Docker, attempt_id: uuid.UUID) -> DoorRun:
+async def open_door(dk: Docker, attempt_id: uuid.UUID, egress: tuple[str, ...] = ()) -> DoorRun:
     """The run's two networks, a stub Prune on the out one, and the door, ready."""
     internal = network_name(attempt_id)
     await dk.runtime.create_network(internal, str(attempt_id))
@@ -72,6 +73,7 @@ async def open_door(dk: Docker, attempt_id: uuid.UUID) -> DoorRun:
         run_budget_usd=0.05,
         max_calls=5,
         timeout_s=10,
+        egress_hosts=egress,
     )
     door = DoorRun.make(
         terms, attempt_id=attempt_id, team_id=TEAM, mode="final", run_dir=dk.run_dir(attempt_id)
@@ -87,9 +89,10 @@ async def open_door(dk: Docker, attempt_id: uuid.UUID) -> DoorRun:
 
 
 async def probe(
-    dk: Docker, attempt_id: uuid.UUID, name: str, *command: str
+    dk: Docker, attempt_id: uuid.UUID, name: str, *command: str, door: DoorRun | None = None
 ) -> tuple[int | None, str]:
-    app = app_container(PYTHON, attempt_id, dk.limits)
+    extra = app_variables(door) if door is not None else None
+    app = app_container(PYTHON, attempt_id, dk.limits, extra_env=extra)
     container = await dk.start(dataclasses.replace(app, name=f"{app.name}-{name}"), *command)
     return await dk.exit_code(container), await dk.logs(container)
 
@@ -126,3 +129,20 @@ async def test_one_run_cannot_use_another_run_s_door(dk: Docker) -> None:
     ):
         code, out = await probe(dk, run_b, f"cross-{n}", "python", "-c", CALL, url, door_a.token)
         assert code == 3, f"run B reached run A's door at {url}: {out}"
+
+
+async def test_an_app_reaches_only_the_listed_outside_hosts_through_the_door(dk: Docker) -> None:
+    run = dk.attempt()
+    door = await open_door(dk, run, egress=("example.com",))
+    # Positive control: the listed host answers through the proxy the app's variables name.
+    code, out = await probe(
+        dk, run, "listed", "python", "-c", REACH, "https://example.com/", door=door
+    )
+    assert code == 0, out
+    code, out = await probe(
+        dk, run, "unlisted", "python", "-c", REACH, "https://www.iana.org/", door=door
+    )
+    assert code == 3 and "403" in out, out
+    # Without the proxy variables the app still has no way out.
+    code, out = await probe(dk, run, "direct", "python", "-c", INTERNET)
+    assert code == 3, out

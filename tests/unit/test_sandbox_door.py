@@ -3,6 +3,7 @@ the door (the app reaches nothing but the door, the door nothing but Prune) is c
 Docker in tests/integration/test_door_isolation.py."""
 
 import asyncio
+import dataclasses
 import json
 import uuid
 from pathlib import Path
@@ -171,3 +172,23 @@ async def test_with_the_door_off_a_run_is_unchanged(run_dir: Path) -> None:
         k.startswith(("OPENAI", "ANTHROPIC", "HP_"))
         for k in spec_of(runtime, alias="app").environment
     )
+
+
+async def test_listed_outside_hosts_give_the_app_the_proxy_variables(run_dir: Path) -> None:
+    terms = dataclasses.replace(TERMS, egress_hosts=("api.weather.test", "*.maps.test"))
+    door = DoorRun.make(terms, attempt_id=ATTEMPT, team_id=TEAM, mode="final", run_dir=run_dir)
+    runtime = scripted(door_answers)
+    await run(runtime, run_dir, door)
+    env = spec_of(runtime, alias="app").environment
+    assert env["HTTPS_PROXY"] == env["https_proxy"] == "http://model-door:8081"
+    assert "model-door" in env["NO_PROXY"] and env["NODE_USE_ENV_PROXY"] == "1"
+    assert env["HP_OUTSIDE_HOSTS"] == "api.weather.test,*.maps.test"
+    door_env = spec_of(runtime, image=TERMS.image).environment
+    assert door_env["DOOR_EGRESS_HOSTS"] == "api.weather.test,*.maps.test"
+
+
+async def test_with_no_outside_hosts_the_app_has_no_proxy(run_dir: Path) -> None:
+    runtime = scripted(door_answers)
+    await run(runtime, run_dir, door_for(run_dir))
+    env = spec_of(runtime, alias="app").environment
+    assert not any("proxy" in k.lower() for k in env) and "HP_OUTSIDE_HOSTS" not in env

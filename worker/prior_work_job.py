@@ -11,6 +11,7 @@ job row's lock, as the audit's and the brief's are.
 """
 
 import uuid
+from collections.abc import Callable
 from concurrent.futures import Executor
 from dataclasses import asdict
 from pathlib import Path
@@ -25,6 +26,7 @@ from core.db import models
 from core.db.engine import Sessions
 from core.logging import get_logger
 from core.priorwork.model import MatchSettings, Report, match_key
+from core.priorwork.related import Embedder
 from core.priorwork.run import BaselineRef, CompareRequest, run_comparison
 from core.settings import Settings
 from worker.index_job import in_pool
@@ -55,6 +57,16 @@ def _report_row(job: queue.Job, status: str, **fields: Any) -> models.PriorWorkR
         status=status,
         **fields,
     )
+
+
+def embedder_factory(settings: Settings) -> Callable[[], Embedder] | None:
+    """The "possibly related" model's factory when `EMBEDDINGS=on`: imported only then, so a
+    worker with it off never loads the model's libraries."""
+    if settings.embeddings != "on":
+        return None
+    from worker.embedder import fast_embedder
+
+    return fast_embedder
 
 
 def make_prior_work_handler(
@@ -157,6 +169,8 @@ def make_prior_work_handler(
             starter_runs=tuple(starters),
             min_teams=event.common_code_min_teams,
             settings=match_settings,
+            embedder_factory=embedder_factory(settings),
+            related_min_score=settings.related_min_score,
         )
         report: Report = await in_pool(
             pool, sessions, job, run_comparison, request, every_s=every_s
@@ -172,6 +186,9 @@ def make_prior_work_handler(
                 **match_settings.stored(),
                 "min_teams": event.common_code_min_teams,
                 "extensions": list(event.scan_extensions),
+                "related_min_score": (
+                    request.related_min_score if request.embedder_factory else None
+                ),
             },
             baseline_ids=[str(b.baseline_id) for b in request.own],
         )

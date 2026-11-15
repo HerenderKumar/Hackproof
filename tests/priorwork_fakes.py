@@ -133,6 +133,22 @@ def fake_embedder() -> FakeEmbedder:
     return FakeEmbedder()
 
 
+# One function, and the same written again: other local names, another structure, no 25-token
+# stretch in common.
+REWRITE_OLD = """function haversineDistance(start, end) {
+  const deltaLat = toRadians(end.lat - start.lat);
+  const deltaLon = toRadians(end.lon - start.lon);
+  return earthRadius * Math.atan2(Math.sqrt(deltaLat), Math.sqrt(deltaLon));
+}
+"""
+REWRITE_NEW = """export function haversineDistance(from, to) {
+  const [lat, lon] = [to.lat - from.lat, to.lon - from.lon].map(toRadians);
+  const both = Math.sqrt(lat) / Math.sqrt(lon);
+  return earthRadius * Math.atan2(both, 1);
+}
+"""
+
+
 def source(path: str, text: str) -> SourceFile:
     return SourceFile(path, _sha(text), text)
 

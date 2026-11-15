@@ -164,4 +164,4 @@ def test_the_baseline_limits_default_to_the_plan() -> None:
         4194304, 1048576, 2147483648,
     )  # fmt: skip
     assert (s.max_devices, s.match_context_lines, s.index_concurrency) == (12, 5, 1)
-    assert (s.embeddings, s.related_min_score) == ("off", 0.80)
+    assert (s.embeddings, s.related_min_score) == ("off", 0.70)

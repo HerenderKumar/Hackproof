@@ -17,7 +17,7 @@ RUN apt-get update \
     # Bare fixture repos and extracted archives are bind-mounted and owned by the host user.
     && git config --system --add safe.directory '*'
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+RUN uv sync --frozen --no-dev --no-group embed
 
 # The application source, shared by both targets.
 FROM scratch AS source
@@ -87,6 +87,12 @@ RUN UV_TOOL_BIN_DIR=/usr/local/bin UV_TOOL_DIR=/opt/uv-tools uv tool install "gr
     && graphify --help >/dev/null
 # The worker image doubles as the pipeline test environment (integration tests, fixture suite).
 RUN uv sync --frozen
+# M9's "possibly related" model (worker/embedder.py), fetched once here and read offline at run
+# time, so device code never leaves the worker. About 0.64 GB.
+ENV EMBED_CACHE_DIR=/opt/models
+ARG EMBED_MODEL=jinaai/jina-embeddings-v2-base-code
+RUN python -c "import sys; from fastembed import TextEmbedding; TextEmbedding(sys.argv[1], cache_dir='/opt/models')" "${EMBED_MODEL}" \
+    && chmod -R a+rX /opt/models
 ENV RAILPACK_VERSION=${RAILPACK_VERSION}
 COPY --from=source /app /app
 CMD ["python", "-m", "worker"]

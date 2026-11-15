@@ -9,7 +9,7 @@ RECORDINGS := -v "$(CURDIR)/fixtures/llm":/recordings -e LLM_REPLAY_DIR=/recordi
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
-.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits baselines smoke fixture-remotes seed-demo runner-image runner-test prune env-check
+.PHONY: help up down logs migrate test test-integration lint format fixtures drafts audits baselines baselines-model smoke fixture-remotes seed-demo runner-image runner-test prune env-check
 
 help: ## List targets
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "} {printf "  %-18s %s\n", $$1, $$2}'
@@ -73,6 +73,9 @@ audits: env-check ## Audit every fixture variant and compare with expected.json
 
 baselines: ## Scan, index and compare the kickoff-baseline fixtures B1 to B6 (no network, no database)
 	uv run python -m scripts.run_baselines $(BASELINE_ARGS)
+
+baselines-model: ## The same, with the worker's own code model scoring the possibly-related pairs
+	$(RUN_WORKER) worker python -m scripts.run_baselines --embedder model $(BASELINE_ARGS)
 
 fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)
 	uv run python -m scripts.make_history_fixtures

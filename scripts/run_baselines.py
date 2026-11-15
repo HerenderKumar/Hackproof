@@ -185,8 +185,16 @@ def _off() -> tuple[Callable[[], Embedder] | None, float]:
     return None, RELATED_MIN_SCORE
 
 
+def _model() -> tuple[Callable[[], Embedder] | None, float]:
+    from core.settings import Settings
+    from worker.embedder import fast_embedder
+
+    return fast_embedder, Settings.model_fields["related_min_score"].default
+
+
 EMBEDDERS: dict[str, Callable[[], tuple[Callable[[], Embedder] | None, float]]] = {
     "fake": _fake,
+    "model": _model,
     "off": _off,
 }
 
@@ -229,10 +237,23 @@ def differences(
         if field in expected and expected[field] != got[field]:
             found.append(f"{field}: expected {expected[field]}, got {got[field]}")
     if "matches" in expected:
-        want = sorted(_key(m) for m in expected["matches"])
-        have = sorted(_key(m) for m in got["matches"])
+        # Found matches are compared one for one; possibly-related ones by the file pairs they
+        # join, because how many pieces of a pair pass the score depends on the embedder.
+        def split(matches: list[dict[str, Any]]) -> tuple[list[Any], set[Any]]:
+            keys = [_key(m) for m in matches]
+            found_keys = sorted(k for k in keys if k[1] != "possibly_related")
+            return found_keys, {k for k in keys if k[1] == "possibly_related"}
+
+        (want, want_related), (have, have_related) = (
+            split(expected["matches"]),
+            split(got["matches"]),
+        )
         if want != have:
             found.append(f"matches: expected {want}, got {have}")
+        if want_related != have_related:
+            found.append(
+                f"possibly related: expected {sorted(want_related)}, got {sorted(have_related)}"
+            )
     if "scan" in expected:
         found += _scan_differences(expected["scan"], scans)
     return found

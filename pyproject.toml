@@ -22,6 +22,10 @@ dependencies = [
 ]
 
 [dependency-groups]
+# The worker's in-process model for M9's "possibly related" list; not in the API image.
+embed = [
+    "fastembed>=0.9.1",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
@@ -32,6 +36,7 @@ dev = [
 # One project, several top-level packages (core, api, worker, runner) run from the repo root.
 [tool.uv]
 package = false
+default-groups = ["dev", "embed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

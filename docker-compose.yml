@@ -121,7 +121,8 @@ services:
       BASELINE_KEY: ${BASELINE_KEY:?Set BASELINE_KEY in .env (openssl rand -hex 32)}
       BASELINE_MAX_FILE_BYTES: ${BASELINE_MAX_FILE_BYTES:-1048576}
       MATCH_CONTEXT_LINES: ${MATCH_CONTEXT_LINES:-5}
-      EMBEDDINGS: ${EMBEDDINGS:-off}
+      EMBEDDINGS: ${EMBEDDINGS:-on}
+      RELATED_MIN_SCORE: ${RELATED_MIN_SCORE:-0.70}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # Same path inside and outside, so bind-mount paths the worker gives Docker resolve on the host.

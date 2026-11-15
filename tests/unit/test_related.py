@@ -13,6 +13,8 @@ from scripts.run_baselines import run_fixture
 from tests.priorwork_fakes import (
     DEFAULT_SETTINGS,
     FAKE_MIN_SCORE,
+    REWRITE_NEW,
+    REWRITE_OLD,
     FakeEmbedder,
     MemoryBaseline,
     block,
@@ -68,20 +70,6 @@ def test_old_files_are_picked_by_the_rare_names_they_share() -> None:
 def test_old_files_sharing_no_name_are_not_picked() -> None:
     device = MemoryBaseline("b1", {"a.js": "function alpha() { return beta; }"})
     assert pick_old_files(source("b.js", "function gamma() { return delta; }"), [device]) == []
-
-
-REWRITE_OLD = """function haversineDistance(start, end) {
-  const deltaLat = toRadians(end.lat - start.lat);
-  const deltaLon = toRadians(end.lon - start.lon);
-  return earthRadius * Math.atan2(Math.sqrt(deltaLat), Math.sqrt(deltaLon));
-}
-"""
-REWRITE_NEW = """export function haversineDistance(from, to) {
-  const [lat, lon] = [to.lat - from.lat, to.lon - from.lon].map(toRadians);
-  const both = Math.sqrt(lat) / Math.sqrt(lon);
-  return earthRadius * Math.atan2(both, 1);
-}
-"""
 
 
 def test_a_pair_above_the_score_is_listed_and_never_counted() -> None:

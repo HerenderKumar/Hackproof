@@ -92,7 +92,9 @@ class Settings(BaseSettings):
     match_context_lines: int = 5
     # Stage 5's "possibly related" list, off unless asked for.
     embeddings: Literal["off", "on"] = "off"
-    related_min_score: float = 0.80
+    # Measured with the worker's model on the fixtures (D-062): B6's rewritten functions score
+    # 0.78 and 0.81, every unrelated pair of B1 to B6 0.575 or less.
+    related_min_score: float = 0.70
 
     # Worker
     watch_concurrency: int = 4

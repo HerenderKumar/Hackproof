@@ -23,8 +23,8 @@ def test_defaults_match_the_brief(monkeypatch: pytest.MonkeyPatch) -> None:
     assert s.link_ttl_days == 7
     # Models are reached through the AI Credits gateway, under its model IDs (D-037).
     assert s.llm_base_url == "https://api.aicredits.in/v1"
-    assert (s.draft_model, s.audit_model, s.brief_model) == ("anthropic/claude-sonnet-5.5",) * 3
-    assert s.fast_model == "anthropic/claude-haiku-5.5"
+    assert (s.draft_model, s.brief_model) == ("anthropic/claude-sonnet-5.5",) * 2
+    assert (s.audit_model, s.fast_model) == ("anthropic/claude-haiku-5.5",) * 2  # D-053
     assert s.buildkit_host == "docker-container://buildkit"
     assert s.runner_image == "hackproof-runner:1"
     assert (s.build_timeout_s, s.run_timeout_s, s.startup_timeout_s) == (480, 600, 60)

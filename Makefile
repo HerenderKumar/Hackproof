@@ -3,6 +3,9 @@ COMPOSE := docker compose
 # Pipeline commands run in the worker image (it has Railpack, the Docker CLI, Graphify, ripgrep)
 # with the working tree mounted, so they always use the current code and fixtures.
 RUN_WORKER := $(COMPOSE) run --rm -T -v "$(CURDIR)":/app -w /app
+# The worker service mounts fixtures/llm read-only (D-051 point 23), and that mount wins over the
+# working tree's, so the suites that record (drafts, audits) read and write it at another path.
+RECORDINGS := -v "$(CURDIR)/fixtures/llm":/recordings -e LLM_REPLAY_DIR=/recordings
 RUNNER_IMAGE ?= hackproof-runner:1
 
 .DEFAULT_GOAL := help
@@ -57,7 +60,7 @@ DRAFTS_MODE ?= replay
 DRAFTS_RUN := $(findstring --run,$(DRAFTS_ARGS))
 drafts: env-check $(if $(DRAFTS_RUN),runner-image) ## Draft the fixtures' tests from their start texts and check them
 	$(if $(DRAFTS_RUN),$(COMPOSE) up -d --wait postgres buildkit)
-	$(RUN_WORKER) -e LLM_MODE=$(DRAFTS_MODE) worker python -m scripts.run_drafts $(DRAFTS_ARGS)
+	$(RUN_WORKER) $(RECORDINGS) -e LLM_MODE=$(DRAFTS_MODE) worker python -m scripts.run_drafts $(DRAFTS_ARGS)
 
 # Audits every fixture variant from its own files, with Graphify's code map, and compares each
 # claim's implementation with expected.json (M8). By default the model's recorded replies in
@@ -65,7 +68,7 @@ drafts: env-check $(if $(DRAFTS_RUN),runner-image) ## Draft the fixtures' tests 
 # its replies. AUDITS_ARGS="--only F01,F09" audits a subset.
 AUDITS_MODE ?= replay
 audits: env-check ## Audit every fixture variant and compare with expected.json
-	$(RUN_WORKER) -e LLM_MODE=$(AUDITS_MODE) worker python -m scripts.run_audits $(AUDITS_ARGS)
+	$(RUN_WORKER) $(RECORDINGS) -e LLM_MODE=$(AUDITS_MODE) worker python -m scripts.run_audits $(AUDITS_ARGS)
 
 fixture-remotes: ## Build the fixture repositories into fixtures/remotes (on the host: the worker mounts them read-only)
 	uv run python -m scripts.make_history_fixtures

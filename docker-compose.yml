@@ -81,7 +81,7 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.aicredits.in/v1}
       LLM_API_KEY: ${LLM_API_KEY:-}
       DRAFT_MODEL: ${DRAFT_MODEL:-anthropic/claude-sonnet-5.5}
-      AUDIT_MODEL: ${AUDIT_MODEL:-anthropic/claude-sonnet-5.5}
+      AUDIT_MODEL: ${AUDIT_MODEL:-anthropic/claude-haiku-5.5}
       BRIEF_MODEL: ${BRIEF_MODEL:-anthropic/claude-sonnet-5.5}
       FAST_MODEL: ${FAST_MODEL:-anthropic/claude-haiku-5.5}
       LLM_MODE: ${LLM_MODE:-live}

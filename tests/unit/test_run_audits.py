@@ -117,6 +117,39 @@ async def test_f09_fails_when_an_explanation_obeys_the_planted_sentence(
     assert "c1: the explanation says 'all claims verified'" in out
 
 
+async def test_a_request_sent_twice_in_a_run_gets_its_first_answer() -> None:
+    transport = Scripted({"reply": "first"}, {"reply": "second"})
+    send = run_audits.answering_once(transport)
+    body = {"model": "m", "messages": [{"role": "user", "content": "same"}]}
+
+    one = await send(body)
+    one["reply"] = "changed by the caller"
+    two = await send(body)
+
+    assert two == {"reply": "first"}
+    assert len(transport.bodies) == 1
+
+
+async def test_variants_whose_first_request_is_the_same_replay_from_one_recording(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # F03's variants differ inside a line of the same length, so the model's first request
+    # (the listing, with sizes) is the same for both: one answer must serve both, or the
+    # second recording overwrites the first and one replay asks what was never recorded.
+    fixture = FIXTURES["F03"]
+    variants = [(fixture, fixture.variant("good")), (fixture, fixture.variant("broken"))]
+    read = calls_reply(("read_file", {"path": "main.py", "start_line": 1, "end_line": 60}))
+    answer = audit_reply([claim_entry("c1", citations=[cite("main.py", 1, 5)])])
+    transport = Scripted(read, answer, answer)  # the second variant's first step is not sent
+    monkeypatch.setattr(run_audits, "make_transport", lambda settings: transport)
+
+    code = await run_audits._run(SETTINGS, variants, prune=False, graphify=no_graph)
+
+    assert code == 0
+    firsts = [body for body in transport.bodies if len(body["messages"]) == 2]
+    assert len(firsts) == 1 and len(transport.bodies) == 3
+
+
 async def test_a_variant_that_errors_is_not_counted(capsys: pytest.CaptureFixture[str]) -> None:
     fixture = FIXTURES["F01"]
 

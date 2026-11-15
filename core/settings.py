@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.aicredits.in/v1"
     llm_api_key: SecretStr | None = None
     draft_model: str = "anthropic/claude-sonnet-5.5"
-    audit_model: str = "anthropic/claude-sonnet-5.5"
+    audit_model: str = "anthropic/claude-haiku-5.5"  # the human's choice, for cost (D-053)
     brief_model: str = "anthropic/claude-sonnet-5.5"
     fast_model: str = "anthropic/claude-haiku-5.5"
     # live calls the gateway; record calls it and saves each reply under llm_replay_dir; replay

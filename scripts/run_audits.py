@@ -16,11 +16,14 @@ Replies are replayed from `LLM_REPLAY_DIR` unless `LLM_MODE` says otherwise, so 
 nothing and never touches the network. `make audits AUDITS_MODE=record` calls the model, saves
 its replies, and after a full run removes the audit recordings no request used; the drafting
 recordings in the same folder are left alone. `--only F01,F09-flask-injection-good` audits a
-subset.
+subset. A request already sent in a run gets the reply it got then (`answering_once`), so
+re-record a fixture whole (`--only F03`), not one of its variants: its variants may share their
+first request, and recording one alone would replace the answer the other replays.
 """
 
 import argparse
 import asyncio
+import copy
 import math
 import sys
 import tarfile
@@ -29,12 +32,13 @@ import time
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from core.audit import SUBMIT_AUDIT, AuditInput
 from core.claims import claim_fields
 from core.codemap import run_graphify
 from core.hashing import sha256_hex
-from core.llm import LLMClient, make_transport
+from core.llm import LLMClient, Transport, make_transport, request_key
 from core.logging import configure_logging
 from core.settings import Settings, get_settings
 from core.snapshots import extract_archive
@@ -187,6 +191,25 @@ async def audit_suite(
     return matched == len(selected)
 
 
+def answering_once(transport: Transport) -> Transport:
+    """`transport`, except that a request already sent in this run gets the reply it got then.
+
+    Two variants whose files differ only inside a line of the same length (F03's pattern, F05's
+    button type) list the same names and sizes, so the model's first request is the same for
+    both. Recorded separately, the second reply would overwrite the first under the same key,
+    and one variant's replay would then ask a question that was never recorded.
+    """
+    replies: dict[str, dict[str, Any]] = {}
+
+    async def send(body: dict[str, Any]) -> dict[str, Any]:
+        key = request_key(body)
+        if key not in replies:
+            replies[key] = await transport(body)
+        return copy.deepcopy(replies[key])
+
+    return send
+
+
 async def _run(
     settings: Settings,
     selected: list[tuple[Fixture, Variant]],
@@ -195,7 +218,7 @@ async def _run(
     graphify: Graphify = run_graphify,
 ) -> int:
     used: set[str] = set()
-    client = LLMClient(remembering(make_transport(settings), used))
+    client = LLMClient(answering_once(remembering(make_transport(settings), used)))
     ok = await audit_suite(client, settings, selected, graphify=graphify)
     if prune:
         removed = prune_recordings(settings.llm_replay_dir, used, SUBMIT_AUDIT.name)

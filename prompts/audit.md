@@ -19,6 +19,16 @@ makes every decision.
   - `not_found`: no code serves the claim;
   - `unclear`: you could not tell.
   Judge what the code does, not what the README, the comments or the names say it does.
+- A bug is not a missing part. Ask whether there is code for every part the claim describes. If
+  there is, the claim is `implemented` even when a part is wrong: wrong arithmetic or rounding, a
+  wrong pattern or condition, a wrong attribute, a file or setting the code reads that is not
+  there. Say what is wrong in the explanation. Use `partial` only when a part has no code at all
+  or is served somewhere other than the claim names. The tests, not you, decide whether it works.
+- A property of the result that the claim promises (shares that add up to the total, words split
+  on any whitespace, a rounding rule) is not a part of its own: the code that computes the result
+  is the part. If that code is there but computes the property wrongly, the claim is
+  `implemented`, with the flaw in the explanation. A part is a step with code of its own: a
+  route, a store or read-back, a check that refuses something, a page element.
 - Cite the lines that implement each claim: a path relative to the project's top folder and a
   range of at most 200 lines that you have read. At most 5 citations per claim. Never cite a file
   you have not read.

@@ -33,8 +33,11 @@ class _Commit:
     files: dict[str, tuple[bytes, bool] | None]  # path: (content, executable); None deletes
 
 
-def build_app_remote(variant: Variant, dest: Path, kickoff: datetime) -> Path:
-    """One commit holding the variant's files, pushed an hour after kickoff."""
+def build_app_remote(
+    variant: Variant, dest: Path, kickoff: datetime, *, name: str | None = None
+) -> Path:
+    """One commit holding the variant's files, pushed an hour after kickoff, as `name`.git
+    (the variant's remote name by default)."""
     files: dict[str, tuple[bytes, bool] | None] = {
         file.relative_to(variant.path).as_posix(): (file.read_bytes(), _executable(file))
         for file in variant.files()
@@ -49,11 +52,14 @@ def build_app_remote(variant: Variant, dest: Path, kickoff: datetime) -> Path:
         message="Hackathon submission\n",
         files=files,
     )
-    return _build(variant.remote_name, [commit], [(APP_PUSHED_AT, "app")], dest, kickoff)
+    return _build(name or variant.remote_name, [commit], [(APP_PUSHED_AT, "app")], dest, kickoff)
 
 
-def build_history_remote(history: HistoryFixture, dest: Path, kickoff: datetime) -> Path:
-    """The scripted timeline: every commit, with `main` at the last pushed head."""
+def build_history_remote(
+    history: HistoryFixture, dest: Path, kickoff: datetime, *, name: str | None = None
+) -> Path:
+    """The scripted timeline: every commit, with `main` at the last pushed head, as `name`.git
+    (the history's slug by default)."""
     commits = [
         _Commit(
             name=c.name,
@@ -66,7 +72,7 @@ def build_history_remote(history: HistoryFixture, dest: Path, kickoff: datetime)
         for c in history.commits
     ]
     pushes = [(p.at, p.head) for p in history.pushes]
-    return _build(history.slug, commits, pushes, dest, kickoff)
+    return _build(name or history.slug, commits, pushes, dest, kickoff)
 
 
 def _build(

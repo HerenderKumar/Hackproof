@@ -3,6 +3,7 @@
 import asyncio
 import uuid
 from collections.abc import AsyncIterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
@@ -171,9 +172,14 @@ async def test_the_worker_waits_quietly_until_the_schema_exists(
 
 
 def test_the_worker_registers_a_handler_for_each_built_pipeline_step(tmp_path: Path) -> None:
-    handlers = build_handlers(
-        worker_settings(tmp_path), async_sessionmaker(), FakeClock(NOW), FakeRuntime()
-    )
+    with ThreadPoolExecutor(1) as pool:
+        handlers = build_handlers(
+            worker_settings(tmp_path),
+            async_sessionmaker(),
+            FakeClock(NOW),
+            FakeRuntime(),
+            pool=pool,
+        )
 
     assert set(handlers) == {
         "prepare_snapshot",
@@ -184,4 +190,5 @@ def test_the_worker_registers_a_handler_for_each_built_pipeline_step(tmp_path: P
         "brief",
         "kickoff_snapshot",
         "poll_repo",
+        "index_baseline",
     }

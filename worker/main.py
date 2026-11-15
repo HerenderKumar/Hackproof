@@ -3,6 +3,8 @@
 import asyncio
 import signal
 from collections.abc import Mapping
+from concurrent.futures import Executor, ProcessPoolExecutor
+from multiprocessing import get_context
 
 from sqlalchemy import text
 
@@ -17,6 +19,7 @@ from worker.audit_job import make_audit_handler
 from worker.brief_job import make_brief_handler
 from worker.cleanup import startup_cleanup
 from worker.draft_job import make_draft_handler
+from worker.index_job import make_index_handler
 from worker.loops import every, wait_until
 from worker.run_job import RUN_KINDS, make_run_handler
 from worker.runtime import ContainerRuntime, DockerRuntime
@@ -33,9 +36,11 @@ def build_handlers(
     runtime: ContainerRuntime,
     *,
     llm: LLMClient | None = None,
+    pool: Executor | None = None,
 ) -> dict[str, lanes.Handler]:
     """Job handlers by kind. Each pipeline milestone adds its own. `llm` replaces the settings'
-    model client (the demo's seed passes one with its own transport)."""
+    model client (the demo's seed passes one with its own transport). The `index` lane's jobs
+    are registered only with a `pool` to run their processor-bound work in."""
     provider = make_provider(settings, clock)
     run = make_run_handler(sessions, runtime, settings, clock)
     llm = llm or make_llm_client(settings, sessions)
@@ -49,6 +54,7 @@ def build_handlers(
         "brief": make_brief_handler(sessions, llm, settings),
         "kickoff_snapshot": make_kickoff_handler(sessions, provider, clock),
         "poll_repo": make_poll_handler(sessions, provider, clock),
+        **({"index_baseline": make_index_handler(sessions, pool, settings)} if pool else {}),
     }
 
 
@@ -64,10 +70,14 @@ async def run(settings: Settings | None = None) -> None:
 
     engine = make_engine(settings.database_url)
     sessions, clock, runtime = make_sessions(engine), SystemClock(), DockerRuntime()
-    handlers = build_handlers(settings, sessions, clock, runtime)
+    # Tokenising baselines is processor-bound: it runs in processes of its own, started fresh
+    # (`spawn`) so none inherits the event loop or the database connections.
+    pool = ProcessPoolExecutor(settings.index_concurrency, mp_context=get_context("spawn"))
+    handlers = build_handlers(settings, sessions, clock, runtime, pool=pool)
     try:
         await serve(settings, sessions, runtime, clock, handlers, stop)
     finally:
+        pool.shutdown(cancel_futures=True)
         await engine.dispose()
 
 

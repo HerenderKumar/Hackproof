@@ -192,4 +192,5 @@ def test_the_worker_registers_a_handler_for_each_built_pipeline_step(tmp_path: P
         "poll_repo",
         "index_baseline",
         "prior_work",
+        "purge_baselines",
     }

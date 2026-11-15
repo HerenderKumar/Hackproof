@@ -121,3 +121,42 @@ async def test_tick_reports_how_many_jobs_it_created(sessions: Sessions) -> None
 
     assert await tick(sessions, T0 + timedelta(seconds=5)) == 4  # a snapshot and a poll each
     assert await tick(sessions, T0 + timedelta(seconds=35)) == 0
+
+
+# --- deleting device code after the retention (M9) ------------------------------------------
+
+
+async def team_with_baseline(sessions: Sessions, status: str = "indexed") -> models.Team:
+    from tests.factories import make_baseline, make_device
+
+    team = await registered_team(sessions, registered=False, baseline_retention_days=7)
+    async with sessions.begin() as s:
+        device = make_device(team.id)
+        s.add(device)
+        await s.flush()
+        s.add(make_baseline(device.id, team.id, status))
+    return team
+
+
+async def test_a_purge_is_scheduled_once_the_retention_has_passed(sessions: Sessions) -> None:
+    team = await team_with_baseline(sessions)
+    after = DEADLINE + timedelta(days=7)
+
+    await tick(sessions, after)
+    await tick(sessions, after + timedelta(hours=1))  # the same day: the same job
+
+    [job] = await jobs_of_kind(sessions, "purge_baselines")
+    assert job.payload == {"event_id": str(team.event_id)} and job.lane == "index"
+    assert job.idempotency_key == queue.purge_key(team.event_id, after.date())
+
+
+async def test_no_purge_is_scheduled_before_that_or_when_nothing_is_left(
+    sessions: Sessions,
+) -> None:
+    await team_with_baseline(sessions)
+    await team_with_baseline(sessions, status="purged")
+    await tick(sessions, DEADLINE + timedelta(days=7) - timedelta(minutes=1))
+    assert await jobs_of_kind(sessions, "purge_baselines") == []
+
+    await tick(sessions, DEADLINE + timedelta(days=8))
+    assert len(await jobs_of_kind(sessions, "purge_baselines")) == 1  # only the event with code

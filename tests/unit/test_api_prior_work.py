@@ -24,6 +24,7 @@ from tests.team_flow import Flow, started
 from tests.unit.test_api_access import ROLES, allowed_roles, api_routes
 from worker import lanes
 from worker.prior_work_job import make_prior_work_handler
+from worker.purge_job import make_purge_handler
 
 KEY = bytes.fromhex(BASELINE_KEY)
 MARKER = "const device_only_marker_e41 = 1;\n"
@@ -339,3 +340,28 @@ def _fill(route: APIRoute, ids: dict[str, str]) -> str:
         else:
             parts.append(part)
     return "/".join(parts)
+
+
+async def test_a_purged_event_returns_no_excerpt_and_says_when_the_code_was_deleted(
+    api: Api, clock: FakeClock, sessions: Sessions, tmp_path: Path, pool: ThreadPoolExecutor
+) -> None:
+    r = await reported(api, clock, sessions, tmp_path, pool)
+    before = (await r.judge.get(judge_path(r))).json()
+    [match] = before["matches"]
+    job = await claimed(sessions, "purge_baselines", payload={"event_id": r.flow.event["id"]})
+    await make_purge_handler(sessions, api.app.state.settings)(job)
+
+    for client, path in (
+        (r.flow.client, f"/api/team/prior-work/matches/{match['id']}"),
+        (r.judge, f"/api/judge/prior-work/matches/{match['id']}"),
+    ):
+        gone = await client.get(path)
+        assert gone.status_code == 410 and gone.json()["detail"]["code"] == "code_deleted"
+    for view in (
+        (await r.judge.get(judge_path(r))).json(),
+        (await r.flow.client.get("/api/team/prior-work")).json(),
+    ):
+        assert view["code_deleted_at"] is not None
+        assert (view["totals"], view["matches"][0]["final_path"]) == (
+            before["totals"], match["final_path"],
+        )  # fmt: skip

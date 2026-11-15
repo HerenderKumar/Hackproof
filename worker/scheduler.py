@@ -1,7 +1,8 @@
-"""The scheduler (section 11.5): keeps kickoff snapshots and repo polls flowing.
+"""The scheduler (section 11.5): keeps kickoff snapshots and repo polls flowing, and deletes
+device code once an event's retention has passed (M9).
 
-Idempotency keys make every tick safe to repeat: one kickoff snapshot per team, and one poll
-per team per poll interval.
+Idempotency keys make every tick safe to repeat: one kickoff snapshot per team, one poll per
+team per poll interval, and one purge per event per day.
 """
 
 from datetime import datetime, timedelta
@@ -32,6 +33,17 @@ _STARTED_TEAMS = text(
 )
 
 
+# Events whose retention has passed and that still hold a baseline not yet purged.
+_PURGEABLE = text(
+    """
+    SELECT e.id AS event_id FROM events e
+    WHERE e.deadline_at + make_interval(days => e.baseline_retention_days) <= :now
+      AND EXISTS (SELECT 1 FROM baselines b JOIN teams t ON t.id = b.team_id
+                  WHERE t.event_id = e.id AND b.status <> 'purged')
+    """
+)
+
+
 async def tick(session: AsyncSession, now: datetime) -> int:
     """Enqueue what is due at `now`. Returns the number of jobs that are new."""
     created = 0
@@ -45,6 +57,14 @@ async def tick(session: AsyncSession, now: datetime) -> int:
             key = queue.poll_key(team.team_id, now, team.poll_interval_seconds)
             _, new = await queue.enqueue(session, "poll_repo", key, team_id=team.team_id)
             created += new
+    for event in (await session.execute(_PURGEABLE, {"now": now})).all():
+        _, new = await queue.enqueue(
+            session,
+            "purge_baselines",
+            queue.purge_key(event.event_id, now.date()),
+            payload={"event_id": str(event.event_id)},
+        )
+        created += new
     return created
 
 

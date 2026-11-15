@@ -1,3 +1,4 @@
+import type { UiPage, UiStepResult } from "@/components/UiEvidence";
 // The API's response bodies, field for field (api/schemas.py and api/team_schemas.py).
 
 // --- the team overview -------------------------------------------------------------------------
@@ -119,12 +120,20 @@ export interface PracticeCase {
   [key: string]: unknown;
 }
 
+export interface UiStepOut {
+  id?: string;
+  action: string;
+  words: string | null;
+  [key: string]: unknown;
+}
+
 export interface TestOut {
   id: string;
+  kind: "api" | "ui";
   claim_type: string;
   version: number;
   spec_hash: string;
-  steps: Step[];
+  steps: Step[] | UiStepOut[];
   practice_cases: PracticeCase[];
   reason: string | null;
   approved_at: string | null;
@@ -193,6 +202,12 @@ export interface AssertionResult {
 export type Verdict = "pass" | "fail" | "blocked" | "unverified";
 
 export interface ResultOut {
+  result_id: string;
+  kind: "api" | "ui";
+  steps: UiStepResult[] | null;
+  page: UiPage | null;
+  has_video: boolean;
+  has_trace: boolean;
   claim_id: string;
   case_id: string | null;
   verdict: Verdict;

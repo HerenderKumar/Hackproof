@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { get, send } from "@/api";
 import { Button, ErrorNotice, Mono, Notice, Section, Spinner, StateBadge } from "@/components/ui";
+import { CaseVideo, PageDetails, TraceLink, UiSteps } from "@/components/UiEvidence";
 import { show, VerdictStrip } from "@/judging/Verdicts";
 import type { Brief as BriefData, BriefClaim, Case, Citation, Mark, Question } from "@/judging/types";
 import { when } from "@/time";
@@ -20,7 +21,29 @@ function briefKey(id: string) {
   return ["brief", id] as const;
 }
 
+function UiEvidence({ item }: { item: Case }) {
+  const base = `/api/judge/results/${item.result_id}/media`;
+  return (
+    <div className="space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
+      <div className="flex flex-wrap items-center gap-2">
+        <StateBadge state={item.verdict} />
+        <span className="text-xs text-neutral-500">
+          case {item.case_id ?? "—"} in a browser
+          {item.input !== null && item.input !== undefined && <> · input <Mono>{show(item.input)}</Mono></>}
+          {item.duration_ms !== null && ` · ${(item.duration_ms / 1000).toFixed(1)} s`}
+        </span>
+      </div>
+      <CaseVideo base={base} hasVideo={item.media?.video ?? false} />
+      <UiSteps steps={item.steps ?? []} />
+      {item.error && <p className="text-neutral-700">{item.error}</p>}
+      {item.verdict !== "pass" && <PageDetails page={item.page} />}
+      <TraceLink base={base} hasTrace={item.media?.trace ?? false} />
+    </div>
+  );
+}
+
 function Evidence({ item }: { item: Case }) {
+  if (item.kind === "ui") return <UiEvidence item={item} />;
   return (
     <div className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
       <div className="flex flex-wrap items-center gap-2">

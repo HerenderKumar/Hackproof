@@ -3,6 +3,7 @@ import { type FormEvent, useCallback, useEffect, useState } from "react";
 import { get, getText, isApiError, newKey, send } from "@/api";
 import { inWords, shown } from "@/components/TestCard";
 import { Button, ErrorNotice, Field, Mono, Notice, Section, Spinner, StateBadge } from "@/components/ui";
+import { CaseVideo, PageDetails, TraceLink, UiSteps } from "@/components/UiEvidence";
 import { keys, POLL_MS, useSnapshots } from "@/queries";
 import { when } from "@/time";
 import type { ResultOut, SelfCheckStart, SelfCheckView, SnapshotRequest, TestsView } from "@/types";
@@ -82,6 +83,20 @@ function TakeSnapshot() {
 }
 
 // --- one self-check's result --------------------------------------------------------------------------
+
+function UiResult({ jobId, result }: { jobId: string; result: ResultOut }) {
+  const base = `/api/team/self-checks/${jobId}/results/${result.result_id}/media`;
+  return (
+    <div className="mt-3 space-y-3 rounded-md border border-neutral-200 bg-neutral-50 p-3">
+      <p className="text-xs text-neutral-500">Practice case {result.case_id ?? "—"} in a browser</p>
+      <CaseVideo base={base} hasVideo={result.has_video} />
+      <UiSteps steps={result.steps ?? []} />
+      {result.verdict !== "pass" && result.error && <p className="text-sm text-neutral-700">{result.error}</p>}
+      {result.verdict !== "pass" && <PageDetails page={result.page} open={result.verdict === "unverified"} />}
+      <TraceLink base={base} hasTrace={result.has_trace} />
+    </div>
+  );
+}
 
 function FailedAssertions({ result }: { result: ResultOut }) {
   const failed = (result.assertion_results ?? []).filter((a) => a.passed === false);
@@ -198,9 +213,13 @@ function Result({ jobId, claims, onGone }: { jobId: string; claims: TestsView | 
             </div>
             {view.results
               .filter((result) => result.claim_id === claimId)
-              .map((result) => (
-                <FailedAssertions key={`${result.claim_id}:${result.case_id}`} result={result} />
-              ))}
+              .map((result) =>
+                result.kind === "ui" ? (
+                  <UiResult key={result.result_id} jobId={jobId} result={result} />
+                ) : (
+                  <FailedAssertions key={result.result_id} result={result} />
+                ),
+              )}
           </li>
         ))}
       </ul>

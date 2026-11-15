@@ -4,7 +4,7 @@ import { send } from "@/api";
 import { Button, ErrorNotice, Spinner, StateBadge } from "@/components/ui";
 import { keys } from "@/queries";
 import { when } from "@/time";
-import type { Assertion, ClaimTest, PracticeCase, Step, TestOut, TestsView } from "@/types";
+import type { Assertion, ClaimTest, PracticeCase, Step, TestOut, TestsView, UiStepOut } from "@/types";
 
 /** A value as the test states it: a template such as {{case.input.people}} stays as written. */
 export function shown(value: unknown): string {
@@ -89,6 +89,16 @@ function StepView({ step, index }: { step: Step; index: number }) {
   );
 }
 
+function UiStepList({ steps }: { steps: UiStepOut[] }) {
+  return (
+    <ol className="list-decimal space-y-1 pl-5 text-sm text-neutral-800">
+      {steps.map((step, i) => (
+        <li key={step.id ?? i}>{step.words ?? step.action}</li>
+      ))}
+    </ol>
+  );
+}
+
 function CaseView({ practice }: { practice: PracticeCase }) {
   const expected = practice.expected;
   const hasExpected = typeof expected === "object" && expected !== null && Object.keys(expected).length > 0;
@@ -166,7 +176,11 @@ function Body({ claim }: { claim: ClaimTest }) {
         </div>
       );
     case "ui_pending":
-      return <p className="text-sm text-neutral-700">A browser test for this claim arrives later.</p>;
+      return (
+        <p className="text-sm text-neutral-700">
+          No browser test is drafted for this claim on this event. Show it to the judges in your demo.
+        </p>
+      );
     case "draft":
     case "approved": {
       const test = claim.test;
@@ -176,11 +190,21 @@ function Body({ claim }: { claim: ClaimTest }) {
           <p className="text-xs text-neutral-500">
             Kind of claim: {test.claim_type.replace("_", " ")} · test version {test.version}
           </p>
-          <ol className="space-y-3">
-            {test.steps.map((step, i) => (
-              <StepView key={step.id ?? i} step={step} index={i} />
-            ))}
-          </ol>
+          {test.kind === "ui" ? (
+            <>
+              <p className="text-sm text-neutral-700">
+                A browser opens your app and does these steps, with a video of each run. Values in {"{{ }}"} come
+                from the case below; the hidden cases use other values.
+              </p>
+              <UiStepList steps={test.steps as UiStepOut[]} />
+            </>
+          ) : (
+            <ol className="space-y-3">
+              {(test.steps as Step[]).map((step, i) => (
+                <StepView key={step.id ?? i} step={step} index={i} />
+              ))}
+            </ol>
+          )}
           {test.practice_cases.map((practice) => (
             <CaseView key={practice.id} practice={practice} />
           ))}

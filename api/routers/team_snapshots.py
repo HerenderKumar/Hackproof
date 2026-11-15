@@ -11,7 +11,7 @@ app may have logged the hidden inputs it was sent.
 import asyncio
 import uuid
 from pathlib import Path
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import PlainTextResponse
@@ -33,6 +33,7 @@ from api.team_schemas import (
     SnapshotsView,
 )
 from core import queue
+from core.brief_data import ui_page, ui_steps
 from core.db import models
 from core.errors import InfraError
 from core.repo import InvalidCommit, ProviderName, RepoInfo, RepoNotFound, RepoProvider
@@ -179,6 +180,7 @@ async def request_snapshot(
 
 LOG_LINES = 200
 LOG_TAIL_BYTES = 64 * 1024
+OUTLINE_LIMIT = 8192  # a team sees the whole outline the runner kept
 
 
 @router.post("/team/snapshots/{snapshot_id}/self-check", status_code=202)
@@ -248,22 +250,27 @@ async def read_self_check(job_id: uuid.UUID, session: TeamUser, db: Db) -> SelfC
     run = await _run(db, job)
     rows = await current_test_results(db, job.id)
     claim_of: dict[uuid.UUID, str] = {}
+    kind_of: dict[uuid.UUID, str] = {}
     if rows:
         found = await db.execute(
-            select(models.TestSpec.id, models.TestSpec.claim_id).where(
+            select(models.TestSpec.id, models.TestSpec.claim_id, models.TestSpec.kind).where(
                 models.TestSpec.id.in_({row.spec_id for row in rows})
             )
         )
-        claim_of = {spec_id: claim_id for spec_id, claim_id in found if claim_id}
+        for spec_id, claim_id, kind in found:
+            if claim_id:
+                claim_of[spec_id], kind_of[spec_id] = claim_id, kind
     results = sorted(
         (
             ResultOut(
+                result_id=row.id,
                 claim_id=claim_of[row.spec_id],
                 case_id=row.case_id,
                 verdict=row.verdict,
                 assertion_results=row.assertion_results,
                 error=row.error,
                 duration_ms=row.duration_ms,
+                **_ui_fields(row, kind_of[row.spec_id]),
             )
             for row in rows
             if row.spec_id in claim_of
@@ -289,6 +296,19 @@ async def read_self_check(job_id: uuid.UUID, session: TeamUser, db: Db) -> SelfC
         results=results,
         claim_verdicts=dict(claim_verdicts(claim_ids, pairs)),
     )
+
+
+def _ui_fields(row: models.TestResult, kind: str) -> dict[str, Any]:
+    """A practice UI case's evidence for its own team (M11 design, part 8)."""
+    if kind != "ui":
+        return {}
+    return {
+        "kind": "ui",
+        "steps": ui_steps(row.actual),
+        "page": ui_page(row.actual, outline_chars=OUTLINE_LIMIT),
+        "has_video": bool(row.video_path),
+        "has_trace": bool(row.trace_path),
+    }
 
 
 def _tail(root: Path, stored: str) -> str | None:

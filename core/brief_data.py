@@ -3,7 +3,9 @@
 Read at request time by the API and once by the `brief` job, so the page and the model see the
 same thing. Verdicts come from `core.results`; an audit or a written part counts only when its
 row belongs to its job's finished attempt (a stale attempt can leave a row behind, D-053).
-Final cases are in here, so this is for judges and organisers, never for a team.
+Final cases are in here, so this is for judges and organisers, never for a team. A UI case
+carries its steps in words, what the page held when it did not pass, and whether a video and a
+trace were kept; the files themselves are served by `api/media.py`.
 """
 
 from typing import Any
@@ -78,8 +80,58 @@ def _clip(value: Any) -> Any:
     return value
 
 
-def _case(row: models.TestResult) -> dict[str, Any]:
+_STEP_FIELDS = ("id", "words", "status", "expected", "actual", "message")
+OUTLINE_CHARS = 4000
+
+
+def ui_steps(actual: Any) -> list[dict[str, Any]]:
+    """A UI case's steps as sentences with how each ended (M11 design, part 8)."""
+    steps = actual.get("steps", []) if isinstance(actual, dict) else []
+    return [
+        {key: _clip(step.get(key)) for key in _STEP_FIELDS if key in step}
+        for step in steps
+        if isinstance(step, dict)
+    ]
+
+
+def ui_page(actual: Any, outline_chars: int = OUTLINE_CHARS) -> dict[str, Any] | None:
+    """What the page held and noted when a UI case did not pass: never sent to a model."""
+    page = actual.get("page") if isinstance(actual, dict) else None
+    if not isinstance(page, dict):
+        return None
+    kept = {key: value for key, value in page.items() if key != "outline" and value}
+    outline = page.get("outline")
+    if isinstance(outline, str) and outline:
+        kept["outline"] = outline[:outline_chars]
+    return kept or None
+
+
+def _ui_case(row: models.TestResult) -> dict[str, Any]:
+    case = row.expected if isinstance(row.expected, dict) else {}
+    assertions = [a for a in (row.assertion_results or []) if isinstance(a, dict)]
+    return {
+        "result_id": str(row.id),
+        "kind": "ui",
+        "case_id": row.case_id,
+        "verdict": row.verdict,
+        "error": row.error,
+        "duration_ms": row.duration_ms,
+        "input": case.get("input"),
+        "expected": case.get("expected"),
+        "request": None,
+        "response": None,
+        "steps": ui_steps(row.actual),
+        "page": ui_page(row.actual),
+        "media": {"video": bool(row.video_path), "trace": bool(row.trace_path)},
+        "assertions_total": len(assertions),
+        "failed": [a for a in assertions if not a.get("passed")],
+    }
+
+
+def _case(row: models.TestResult, kind: str = "api") -> dict[str, Any]:
     """One final case as evidence: its input, the step that decided it and what failed."""
+    if kind == "ui":
+        return _ui_case(row)
     case = row.expected if isinstance(row.expected, dict) else {}
     steps = (row.actual or {}).get("steps", []) if isinstance(row.actual, dict) else []
     ran = [step for step in steps if isinstance(step, dict) and step.get("request")]
@@ -164,7 +216,7 @@ async def load_facts(session: AsyncSession, submission_id: UUID) -> dict[str, An
     for item in items:
         claim_id = item["id"]
         cases = [
-            _case(row)
+            _case(row, spec.kind)
             for row in sorted(rows, key=lambda r: (str(r.spec_id), r.case_id or ""))
             if (spec := specs.get(row.spec_id)) is not None and spec.claim_id == claim_id
         ]

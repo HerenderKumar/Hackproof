@@ -156,8 +156,14 @@ async def test_a_finished_self_check_shows_the_run_and_each_test(
     body = response.json()
     assert body["status"] == "done"
     assert body["run"] == {"build_status": "ok", "startup_status": "ok", "startup_detail": None}
+    assert body["results"][0].pop("result_id")
     assert body["results"] == [
         {
+            "kind": "api",
+            "steps": None,
+            "page": None,
+            "has_video": False,
+            "has_trace": False,
             "claim_id": "c1",
             "case_id": "p1",
             "verdict": "pass",

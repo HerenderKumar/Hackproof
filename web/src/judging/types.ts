@@ -1,5 +1,6 @@
 // What the judge's and the organiser's routes return (api/routers/judge.py, organiser.py).
 
+import type { UiPage, UiStepResult } from "@/components/UiEvidence";
 import type { Verdict } from "@/types";
 
 export type JobState = "none" | "pending" | "done" | "failed";
@@ -20,6 +21,10 @@ export type Assertion = {
 
 export type Case = {
   result_id: string;
+  kind?: "ui";
+  steps?: UiStepResult[];
+  page?: UiPage | null;
+  media?: { video: boolean; trace: boolean };
   case_id: string | null;
   verdict: Verdict;
   error: string | null;

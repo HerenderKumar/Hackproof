@@ -6,9 +6,10 @@ read, until the deadline: the claims lock freezes what a test says, not the appr
 """
 
 import uuid
-from typing import cast
+from typing import Any, cast
 
 from fastapi import APIRouter, Request
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from api.deps import Db, TeamUser
@@ -24,6 +25,8 @@ from api.team_schemas import (
 )
 from core import queue
 from core.db import models
+from core.specs import UiStep
+from core.ui_words import step_words
 
 router = APIRouter(prefix="/api", tags=["team"])
 
@@ -51,13 +54,28 @@ async def _draft_jobs(db: Db, team_id: uuid.UUID, claims_version: int) -> list[m
     return list(result)
 
 
+def _steps(row: models.TestSpec) -> list[dict[str, Any]]:
+    """The steps as stored; a UI step also carries its sentence, so pages print no wording."""
+    if row.kind != "ui":
+        return list(row.steps)
+    shown = []
+    for step in row.steps:
+        try:
+            words = step_words(UiStep.model_validate(step))
+        except ValidationError:
+            words = None
+        shown.append({**step, "words": words})
+    return shown
+
+
 def _test(row: models.TestSpec) -> TestOut:
     return TestOut(
         id=row.id,
+        kind=row.kind,
         claim_type=row.claim_type,
         version=row.version,
         spec_hash=row.spec_hash,
-        steps=row.steps,
+        steps=_steps(row),
         practice_cases=row.practice_cases,
         reason=row.clarification_reason,
         approved_at=row.approved_at,

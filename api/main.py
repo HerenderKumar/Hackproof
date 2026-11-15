@@ -12,6 +12,7 @@ from api.routers import (
     events,
     health,
     judge,
+    media,
     organiser,
     team,
     team_claims,
@@ -76,4 +77,5 @@ def create_app(
     app.include_router(team_tests.router)
     app.include_router(team_snapshots.router)
     app.include_router(team_submissions.router)
+    app.include_router(media.router)
     return app

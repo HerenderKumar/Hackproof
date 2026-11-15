@@ -62,10 +62,11 @@ class TestOut(BaseModel):
     __test__ = False  # not a pytest class
 
     id: uuid.UUID
+    kind: str = "api"
     claim_type: str
     version: int
     spec_hash: str
-    steps: list[dict[str, Any]]
+    steps: list[dict[str, Any]]  # a UI step also carries `words`, its sentence
     practice_cases: list[dict[str, Any]]
     reason: str | None
     approved_at: datetime | None
@@ -143,12 +144,20 @@ class RunOut(BaseModel):
 
 
 class ResultOut(BaseModel):
+    result_id: uuid.UUID
     claim_id: str
     case_id: str | None
     verdict: str
     assertion_results: Any
     error: str | None
     duration_ms: int | None
+    # A UI case (M11): its steps in words, what the page held when it did not pass, and
+    # whether its video and trace were kept.
+    kind: str = "api"
+    steps: list[dict[str, Any]] | None = None
+    page: dict[str, Any] | None = None
+    has_video: bool = False
+    has_trace: bool = False
 
 
 class SelfCheckView(BaseModel):

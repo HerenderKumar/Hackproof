@@ -2,9 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
 import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { get, isApiError, send } from "@/api";
-import { Button, ErrorNotice, Mono, Notice, Section, Spinner } from "@/components/ui";
+import { Button, ErrorNotice, Notice, Section, Spinner } from "@/components/ui";
 import { KickoffScans } from "@/judging/KickoffScans";
-import { show, VerdictStrip } from "@/judging/Verdicts";
+import { readable, VerdictStrip } from "@/judging/Verdicts";
 import type { BriefState, Dashboard, EventSummary, JobState, SpotCheck } from "@/judging/types";
 import { when } from "@/time";
 
@@ -15,6 +15,35 @@ function tone(state: string): string {
   if (state === "failed") return "text-red-700 font-medium";
   if (state === "pending" || state === "running" || state === "queued" || state === "writing") return "text-sky-700";
   return "text-neutral-700";
+}
+
+/** Test cases as a table a person reads: what goes in, what must come out. */
+function Cases({ cases }: { cases: unknown }) {
+  const rows = Array.isArray(cases) ? (cases as Record<string, unknown>[]) : [];
+  if (!rows.length) return <p className="text-xs text-neutral-500">None.</p>;
+  return (
+    <table className="mt-1 w-full text-left text-xs">
+      <thead className="text-neutral-500">
+        <tr>
+          <th className="py-1 pr-3 font-medium">Case</th>
+          <th className="py-1 pr-3 font-medium">Input</th>
+          <th className="py-1 pr-3 font-medium">Expected</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-neutral-200">
+        {rows.map((r, i) => (
+          <tr key={String(r.id ?? i)} className="align-top">
+            <td className="py-1 pr-3 font-mono">
+              {String(r.id ?? i + 1)}
+              {r.boundary === true && <span className="ml-1 rounded bg-amber-100 px-1 text-amber-800">edge</span>}
+            </td>
+            <td className="py-1 pr-3">{readable(r.input)}</td>
+            <td className="py-1 pr-3">{readable(r.expected)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
 }
 
 /** A team's tests with the hidden final cases, opened on demand (section 5.1, step 7). */
@@ -34,10 +63,10 @@ function Specs({ teamId }: { teamId: string }) {
           {c.test?.reason && <p className="mt-1 text-orange-800">{c.test.reason}</p>}
           {c.test && (
             <>
-              <p className="mt-2 text-xs font-medium text-neutral-600">Practice cases (the team sees these)</p>
-              <Mono className="block">{show(c.test.practice_cases)}</Mono>
-              <p className="mt-2 text-xs font-medium text-neutral-600">Final cases (hidden from the team)</p>
-              <Mono className="block">{show(c.test.final_cases)}</Mono>
+              <p className="mt-3 text-xs font-medium text-neutral-600">Practice cases (the team sees these)</p>
+              <Cases cases={c.test.practice_cases} />
+              <p className="mt-3 text-xs font-medium text-neutral-600">Final cases (hidden from the team)</p>
+              <Cases cases={c.test.final_cases} />
             </>
           )}
         </div>

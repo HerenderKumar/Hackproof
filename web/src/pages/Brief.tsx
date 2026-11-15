@@ -5,7 +5,7 @@ import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Too
 import { get, send } from "@/api";
 import { Button, ErrorNotice, Mono, Notice, Section, Spinner, StateBadge } from "@/components/ui";
 import { CaseVideo, PageDetails, TraceLink, UiSteps } from "@/components/UiEvidence";
-import { show, VerdictStrip } from "@/judging/Verdicts";
+import { readable, VerdictStrip } from "@/judging/Verdicts";
 import type { Brief as BriefData, BriefClaim, Case, Citation, Mark, Question } from "@/judging/types";
 import { when } from "@/time";
 import type { PriorWorkView, Verdict } from "@/types";
@@ -29,7 +29,7 @@ function UiEvidence({ item }: { item: Case }) {
         <StateBadge state={item.verdict} />
         <span className="text-xs text-neutral-500">
           case {item.case_id ?? "—"} in a browser
-          {item.input !== null && item.input !== undefined && <> · input <Mono>{show(item.input)}</Mono></>}
+          {item.input !== null && item.input !== undefined && <> · input <Mono>{readable(item.input)}</Mono></>}
           {item.duration_ms !== null && ` · ${(item.duration_ms / 1000).toFixed(1)} s`}
         </span>
       </div>
@@ -59,20 +59,20 @@ function Evidence({ item }: { item: Case }) {
             {item.request.method} {item.request.path}
           </Mono>
           {item.request.json !== undefined && item.request.json !== null && (
-            <Mono className="mt-1 block text-neutral-600">{show(item.request.json)}</Mono>
+            <Mono className="mt-1 block text-neutral-600">{readable(item.request.json)}</Mono>
           )}
         </p>
       )}
       {item.response?.status !== undefined && (
         <p className="mt-1 text-xs text-neutral-600">
-          answered {item.response.status}: <Mono>{show(item.response.body ?? item.response.text)}</Mono>
+          answered {item.response.status}: <Mono>{readable(item.response.body ?? item.response.text)}</Mono>
         </p>
       )}
       {item.failed.map((a, i) => (
         <p key={i} className="mt-2 text-red-800">
           <span className="font-medium">{a.op}</span>
-          {a.path && <Mono className="mx-1">{a.path}</Mono>}: expected <Mono>{show(a.expected)}</Mono>, got{" "}
-          <Mono>{show(a.actual)}</Mono>
+          {a.path && <Mono className="mx-1">{a.path}</Mono>}: expected <Mono>{readable(a.expected)}</Mono>, got{" "}
+          <Mono>{readable(a.actual)}</Mono>
           {a.note && <span className="block text-xs text-red-700">{a.note}</span>}
         </p>
       ))}
@@ -399,15 +399,18 @@ export function Brief() {
             <Mono>{b.submission.commit_sha.slice(0, 10)}</Mono>
           )}
         </p>
-        <p className="mt-1 text-xs text-neutral-500">
-          Platform-built image from archive <Mono className="text-neutral-600">{b.submission.archive_sha256}</Mono>
-          {b.run.image_digest && (
-            <>
-              , image <Mono className="text-neutral-600">{b.run.image_digest}</Mono>
-            </>
-          )}
-          .
-        </p>
+        <details className="mt-1 text-xs text-neutral-500">
+          <summary className="cursor-pointer select-none">Build fingerprints</summary>
+          <p className="mt-1 break-all">
+            Platform-built image from archive <Mono className="text-neutral-600">{b.submission.archive_sha256}</Mono>
+            {b.run.image_digest && (
+              <>
+                , image <Mono className="text-neutral-600">{b.run.image_digest}</Mono>
+              </>
+            )}
+            .
+          </p>
+        </details>
         {b.run.model_use && (
           <p className="mt-1 text-xs text-neutral-600">
             {b.run.model_use.calls === 0

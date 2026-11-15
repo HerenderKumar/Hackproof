@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useState } from "react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { get, isApiError, send } from "@/api";
 import { Button, ErrorNotice, Mono, Notice, Section, Spinner } from "@/components/ui";
 import { show, VerdictStrip } from "@/judging/Verdicts";
@@ -213,10 +213,15 @@ function Scores({ board }: { board: Dashboard }) {
   );
 }
 
-/** The organiser's dashboard (section 5.1, steps 6 to 8) for the most recent event. */
+/** The organiser's dashboard (section 5.1, steps 6 to 8) for the event in `?event=<id>`, or
+ * the one made most recently. */
 export function OrgHome() {
+  const [params] = useSearchParams();
   const events = useQuery({ queryKey: ["events"], queryFn: () => get<{ events: EventSummary[] }>("/events") });
-  const eventId = events.data?.events[0]?.id;
+  const all = events.data?.events ?? [];
+  const asked = params.get("event");
+  const eventId = (all.find((e) => e.id === asked) ?? all[0])?.id;
+  const others = all.filter((e) => e.id !== eventId);
   const board = useQuery({
     queryKey: ["dashboard", eventId],
     queryFn: () => get<Dashboard>(`/events/${eventId}/dashboard`),
@@ -240,6 +245,19 @@ export function OrgHome() {
         <p className="mt-1 text-sm text-neutral-600">
           Kickoff {when(b.event.kickoff_at)} · deadline {when(b.event.deadline_at)}
         </p>
+        {others.length > 0 && (
+          <p className="mt-1 text-sm text-neutral-600">
+            Other events:{" "}
+            {others.map((e, i) => (
+              <Fragment key={e.id}>
+                {i > 0 && " · "}
+                <Link className="underline" to={`/org?event=${e.id}`}>
+                  {e.name}
+                </Link>
+              </Fragment>
+            ))}
+          </p>
+        )}
       </header>
       {failed > 0 && <Notice tone="error">{failed} of the shown jobs failed. Each can be run again below.</Notice>}
       <Teams board={b} />

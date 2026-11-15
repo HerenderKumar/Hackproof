@@ -356,3 +356,12 @@ async def test_revoking_is_repeatable_and_unknown_links_are_not_found(api: Api) 
     unknown = await organiser.delete(f"/api/links/{uuid.uuid4()}")
 
     assert (first.status_code, second.status_code, unknown.status_code) == (204, 204, 404)
+
+
+async def test_events_are_listed_newest_made_first(api: Api) -> None:
+    organiser = await api.organiser()
+    later_kickoff = await api.event(organiser, name="First made")
+    earlier = (T0 - timedelta(days=3)).isoformat()
+    second = await api.event(organiser, name="Second made", kickoff_at=earlier)
+    listed = (await organiser.get("/api/events")).json()["events"]
+    assert [e["id"] for e in listed] == [second["id"], later_kickoff["id"]]

@@ -35,7 +35,11 @@ async def _event(db: Db, event_id: uuid.UUID) -> models.Event:
 
 @router.get("/events")
 async def list_events(_: Organiser, db: Db) -> dict[str, Any]:
-    events = await db.scalars(select(models.Event).order_by(models.Event.kickoff_at.desc()))
+    # Newest made first: an event made later (a smoke test, a second seed) is shown first, and
+    # the page can be pointed at any other with ?event=<id>.
+    events = await db.scalars(
+        select(models.Event).order_by(models.Event.created_at.desc(), models.Event.id.desc())
+    )
     return {
         "events": [
             {

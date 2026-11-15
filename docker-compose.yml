@@ -16,6 +16,8 @@ x-shared-env: &shared-env
   MAX_REDRAFTS: ${MAX_REDRAFTS:-3}
   MAX_SUBMISSIONS: ${MAX_SUBMISSIONS:-10}
   LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  # Invitation links point here; the worker needs it too (make seed-demo prints the links).
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
 
 # A fault that repeats (an outage, a crash loop) must not fill the disk with logs.
 x-logging: &logging
@@ -61,7 +63,6 @@ services:
       SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
       SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-12}
       APP_ENV: ${APP_ENV:-production}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:3000}
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -100,6 +101,12 @@ services:
       APP_CPUS: ${APP_CPUS:-1}
       APP_PIDS_LIMIT: ${APP_PIDS_LIMIT:-256}
       RUNNER_MEMORY: ${RUNNER_MEMORY:-2g}
+      RUNNER_PIDS_LIMIT: ${RUNNER_PIDS_LIMIT:-512}
+      RUNNER_CPUS: ${RUNNER_CPUS:-2}
+      RUNNER_BROWSER_SANDBOX: ${RUNNER_BROWSER_SANDBOX:-true}
+      DRAFT_UI_TESTS: ${DRAFT_UI_TESTS:-true}
+      # No colon: an empty value must stay empty, it means "use DRAFT_MODEL".
+      DRAFT_UI_MODEL: ${DRAFT_UI_MODEL-anthropic/claude-haiku-5.5}
       WATCH_CONCURRENCY: ${WATCH_CONCURRENCY:-4}
       HEAVY_CONCURRENCY: ${HEAVY_CONCURRENCY:-1}
     volumes:
@@ -120,7 +127,8 @@ services:
       context: ./web
     logging: *logging
     ports:
-      - "127.0.0.1:3000:80"
+      # WEB_BIND=0.0.0.0 lets other devices on the network (a judge's phone) reach the pages.
+      - "${WEB_BIND:-127.0.0.1}:3000:80"
     depends_on:
       - api
 

@@ -160,3 +160,44 @@ class SelfCheckView(BaseModel):
     run: RunOut | None
     results: list[ResultOut]
     claim_verdicts: dict[str, str]
+
+
+# --- submissions -----------------------------------------------------------------------------
+
+
+class ReuseDeclaration(Strict):
+    """What the team says it did not write during the event (section 5.2)."""
+
+    starter_code: bool
+    earlier_work: bool
+    ai_assistance: bool
+    notes: Annotated[str, StringConstraints(strip_whitespace=True, max_length=2000)] = ""
+
+
+class SubmissionIn(Strict):
+    snapshot_id: uuid.UUID
+    mode: Literal["sandbox"]
+    reuse_declaration: ReuseDeclaration
+    idempotency_key: RequestId  # made once per page load, so a double click is one submission
+
+
+class Receipt(BaseModel):
+    """The receipt: `receipt_hash` is the SHA-256 of the canonical JSON of the fields above it
+    except `team_name`, exactly as they are written here."""
+
+    submission_id: str
+    team_id: str
+    team_name: str
+    commit_sha: str
+    archive_sha256: str
+    claims_hash: str
+    test_spec_hash: str
+    rubric_version: int
+    submitted_at: str
+    receipt_hash: str
+
+
+class CurrentSubmission(BaseModel):
+    receipt: Receipt
+    submissions_made: int
+    final_run: str  # the final run job's status

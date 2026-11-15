@@ -85,6 +85,11 @@ def self_check_key(snapshot_id: uuid.UUID, client_request_id: str) -> str:
     return f"self_check:{snapshot_id}:{client_request_id}"
 
 
+def final_run_key(submission_id: uuid.UUID) -> str:
+    """One final run per submission."""
+    return f"final_run:{submission_id}"
+
+
 def poll_key(team_id: uuid.UUID, at: datetime, poll_interval_s: int) -> str:
     """One poll per team per interval: every enqueue inside a bucket shares a key."""
     return f"poll:{team_id}:{int(at.timestamp()) // poll_interval_s}"

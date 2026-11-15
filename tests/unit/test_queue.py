@@ -329,3 +329,8 @@ def test_one_draft_job_per_team_and_claims_version() -> None:
 def test_one_self_check_job_per_snapshot_and_request() -> None:
     snapshot = uuid.UUID("22222222-2222-2222-2222-222222222222")
     assert queue.self_check_key(snapshot, "request-0001") == f"self_check:{snapshot}:request-0001"
+
+
+def test_one_final_run_per_submission() -> None:
+    submission = uuid.UUID("33333333-3333-3333-3333-333333333333")
+    assert queue.final_run_key(submission) == f"final_run:{submission}"

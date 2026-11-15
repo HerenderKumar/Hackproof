@@ -133,11 +133,11 @@ function ClaimCard({ brief, claim }: { brief: BriefData; claim: BriefClaim }) {
   const [open, setOpen] = useState(claim.verdict !== "pass");
   return (
     <Section
-      title={`${claim.id}: ${claim.text}`}
+      title={`${claim.id.replace(/^c(\d+)$/, "Claim $1")}: ${claim.text}`}
       aside={<StateBadge state={claim.verdict} />}
     >
       <p className="text-xs text-neutral-500">
-        {claim.type ?? "claim"} · <Mono>{claim.target}</Mono>
+        <span className="rounded-md bg-indigo-50 px-2 py-0.5 font-medium text-indigo-700">{(claim.type ?? "claim").replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase())}</span> · <Mono>{claim.target}</Mono>
       </p>
       {line && <p className="text-sm text-neutral-800">{line}</p>}
       <button type="button" className="text-sm font-medium text-indigo-700 underline" onClick={() => setOpen(!open)}>
@@ -388,9 +388,9 @@ export function Brief() {
         ← All teams
       </Link>
       <header>
-        <h1 className="text-xl font-semibold text-neutral-900">{b.submission.team_name}</h1>
+        <h1 className="bg-gradient-to-r from-indigo-700 via-violet-700 to-fuchsia-700 bg-clip-text text-3xl font-bold text-transparent">{b.submission.team_name}</h1>
         <p className="mt-1 text-sm text-neutral-600">
-          {b.submission.mode} · submitted {when(b.submission.submitted_at)} · commit{" "}
+          {b.submission.mode.replace(/_/g, " ").replace(/^./, (ch) => ch.toUpperCase())} · Submitted {when(b.submission.submitted_at)} · commit{" "}
           {b.submission.commit_url ? (
             <a className="font-mono text-indigo-700 underline" href={b.submission.commit_url} target="_blank" rel="noreferrer">
               {b.submission.commit_sha.slice(0, 10)}

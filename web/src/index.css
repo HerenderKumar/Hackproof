@@ -1,1 +1,68 @@
 @import "tailwindcss";
+
+/* HackProof's look: an indigo-to-violet brand, soft tinted background, roomy type. */
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: 0.005em;
+  }
+  body {
+    background:
+      radial-gradient(1200px 500px at 10% -10%, rgb(224 231 255 / 0.7), transparent 60%),
+      radial-gradient(900px 400px at 100% 0%, rgb(237 233 254 / 0.6), transparent 60%),
+      rgb(248 250 252);
+    min-height: 100vh;
+    color: rgb(30 41 59);
+    line-height: 1.6;
+  }
+  h1 {
+    letter-spacing: -0.015em;
+  }
+  a {
+    color: rgb(79 70 229);
+    text-underline-offset: 3px;
+  }
+  a:hover {
+    color: rgb(67 56 202);
+  }
+  table thead th {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: rgb(100 116 139);
+  }
+  table tbody tr {
+    transition: background-color 120ms ease;
+  }
+  table tbody tr:hover {
+    background-color: rgb(238 242 255 / 0.55);
+  }
+  details > summary {
+    list-style: none;
+  }
+  details > summary::-webkit-details-marker {
+    display: none;
+  }
+  details > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 0.45rem;
+    color: rgb(99 102 241);
+    transition: transform 150ms ease;
+  }
+  details[open] > summary::before {
+    transform: rotate(90deg);
+  }
+}
+
+/* The brand bar at the top of every page. */
+.hp-bar {
+  background: linear-gradient(100deg, rgb(67 56 202) 0%, rgb(109 40 217) 55%, rgb(147 51 234) 100%);
+  box-shadow: 0 6px 24px -12px rgb(76 29 149 / 0.6);
+}
+.hp-bar a,
+.hp-bar a:hover {
+  color: white;
+}

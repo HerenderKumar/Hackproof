@@ -143,12 +143,12 @@ export function ErrorNotice({ error, title }: { error: unknown; title?: string }
 const BADGES: Record<ClaimState | Verdict, { label: string; tone: string }> = {
   drafting: { label: "Being drafted", tone: "bg-sky-100 text-sky-800" },
   draft: { label: "Waiting for approval", tone: "bg-amber-100 text-amber-800" },
-  approved: { label: "Approved", tone: "bg-emerald-100 text-emerald-800" },
+  approved: { label: "Approved", tone: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" },
   needs_clarification: { label: "Needs clarification", tone: "bg-orange-100 text-orange-800" },
   ui_pending: { label: "Browser test later", tone: "bg-neutral-100 text-neutral-700" },
   drafting_failed: { label: "Drafting failed", tone: "bg-red-100 text-red-800" },
-  pass: { label: "Pass", tone: "bg-emerald-100 text-emerald-800" },
-  fail: { label: "Fail", tone: "bg-red-100 text-red-800" },
+  pass: { label: "✓ Pass", tone: "bg-emerald-100 text-emerald-800 ring-1 ring-emerald-300" },
+  fail: { label: "✕ Fail", tone: "bg-rose-100 text-rose-800 ring-1 ring-rose-300" },
   blocked: { label: "Did not start", tone: "bg-neutral-200 text-neutral-800" },
   unverified: { label: "Unverified", tone: "bg-neutral-100 text-neutral-700" },
 };
@@ -156,7 +156,7 @@ const BADGES: Record<ClaimState | Verdict, { label: string; tone: string }> = {
 export function StateBadge({ state }: { state: ClaimState | Verdict }) {
   const badge = BADGES[state];
   return (
-    <span className={cx("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium", badge.tone)}>
+    <span className={cx("inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold", badge.tone)}>
       {badge.label}
     </span>
   );
@@ -179,12 +179,16 @@ export function Spinner({ small = false, label }: { small?: boolean; label?: str
 
 export function Section({ title, children, aside }: { title: string; children: ReactNode; aside?: ReactNode }) {
   return (
-    <section className="rounded-lg border border-neutral-200 bg-white p-5 shadow-xs">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-base font-semibold text-neutral-900">{title}</h2>
+    <section className="relative overflow-hidden rounded-2xl border border-slate-200/80 bg-white/90 p-6 shadow-[0_8px_30px_-12px_rgb(30_27_75/0.18)] backdrop-blur">
+      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 via-violet-500 to-fuchsia-500" />
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900">
+          <span className="h-2 w-2 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500" />
+          {title}
+        </h2>
         {aside}
       </div>
-      <div className="mt-3 space-y-3">{children}</div>
+      <div className="mt-4 space-y-4">{children}</div>
     </section>
   );
 }

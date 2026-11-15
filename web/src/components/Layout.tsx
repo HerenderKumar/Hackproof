@@ -71,11 +71,12 @@ export function Layout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50">
-      <header className="border-b border-neutral-200 bg-white">
+    <div className="min-h-screen">
+      <header className="border-b border-indigo-100 bg-white/80 backdrop-blur">
+        <div className="hp-bar h-1.5" />
         <div className="mx-auto max-w-4xl px-4 pt-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <p className="text-lg font-semibold text-neutral-900">
+            <p className="text-xl font-bold tracking-tight text-neutral-900">
               {team.data.name}
               <span className="ml-2 text-sm font-normal text-neutral-500">{team.data.event.name}</span>
             </p>

@@ -9,7 +9,7 @@ export function VerdictStrip({ verdicts }: { verdicts: Record<string, Verdict> }
     <span className="inline-flex flex-wrap gap-1.5">
       {ids.map((id) => (
         <span key={id} className="inline-flex items-center gap-1 text-xs text-neutral-600">
-          <span className="font-mono">{id}</span>
+          <span className="font-medium text-slate-500">{id.replace(/^c(\d+)$/, "Claim $1")}</span>
           <StateBadge state={verdicts[id] ?? "unverified"} />
         </span>
       ))}

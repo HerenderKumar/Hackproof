@@ -8,12 +8,12 @@ import { readable, VerdictStrip } from "@/judging/Verdicts";
 import type { BriefState, Dashboard, EventSummary, JobState, SpotCheck } from "@/judging/types";
 import { when } from "@/time";
 
-const JOB: Record<JobState, string> = { none: "—", pending: "running", done: "done", failed: "failed" };
-const BRIEF: Record<BriefState, string> = { ok: "ready", failed: "results only", pending: "writing", none: "—" };
+const JOB: Record<JobState, string> = { none: "—", pending: "Running", done: "Done", failed: "Failed" };
+const BRIEF: Record<BriefState, string> = { ok: "Ready", failed: "Results only", pending: "Writing", none: "—" };
 
 function tone(state: string): string {
-  if (state === "failed") return "text-red-700 font-medium";
-  if (state === "pending" || state === "running" || state === "queued" || state === "writing") return "text-sky-700";
+  if (state.toLowerCase() === "failed") return "text-red-700 font-medium";
+  if (["pending", "running", "queued", "writing"].includes(state.toLowerCase())) return "text-sky-700";
   return "text-neutral-700";
 }
 
@@ -57,7 +57,7 @@ function Specs({ teamId }: { teamId: string }) {
       {specs.data.claims.map((c) => (
         <div key={c.claim_id} className="rounded-md border border-neutral-200 bg-neutral-50 p-3 text-sm">
           <p>
-            <span className="font-mono">{c.claim_id}</span> {c.text}{" "}
+            <span className="font-semibold text-indigo-700">{c.claim_id.replace(/^c(\d+)$/, "Claim $1")}</span> {c.text}{" "}
             <span className="text-xs text-neutral-500">· {c.test ? `${c.test.claim_type}, ${c.test.status}` : c.state}</span>
           </p>
           {c.test?.reason && <p className="mt-1 text-orange-800">{c.test.reason}</p>}
@@ -226,7 +226,7 @@ export function OrgHome() {
   return (
     <>
       <header>
-        <h1 className="text-xl font-semibold">{b.event.name}</h1>
+        <h1 className="bg-gradient-to-r from-indigo-700 via-violet-700 to-fuchsia-700 bg-clip-text text-3xl font-bold text-transparent">{b.event.name}</h1>
         <p className="mt-1 text-sm text-neutral-600">
           Kickoff {when(b.event.kickoff_at)} · deadline {when(b.event.deadline_at)}
         </p>
